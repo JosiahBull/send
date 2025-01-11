@@ -1,0 +1,6 @@
+---
+source: crates/server/src/error.rs
+expression: status_code
+snapshot_kind: text
+---
+403 Forbidden

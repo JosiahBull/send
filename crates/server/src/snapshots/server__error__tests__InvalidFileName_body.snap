@@ -1,0 +1,6 @@
+---
+source: crates/server/src/error.rs
+expression: body
+snapshot_kind: text
+---
+Invalid file name

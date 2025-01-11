@@ -1,0 +1,13 @@
+---
+source: crates/server/src/error.rs
+expression: response
+snapshot_kind: text
+---
+Response {
+    status: 500,
+    version: HTTP/1.1,
+    headers: {},
+    body: Body(
+        UnsyncBoxBody,
+    ),
+}

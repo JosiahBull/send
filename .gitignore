@@ -1,0 +1,10 @@
+*.sig
+*.db
+*.db-shm
+*.db-wal
+target/
+cache/
+mutants*/
+test_auth.sh
+.DS_Store
+lcov.info
