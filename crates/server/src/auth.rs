@@ -2,20 +2,20 @@
 
 // TODO: move this into it's own library which can be published to crates.io
 
-use axum_extra::headers::authorization::Credentials;
-use base64::Engine;
-use rand::RngCore;
-use reqwest::Url;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
     time::Duration,
 };
+
+use axum_extra::headers::authorization::Credentials;
+use base64::Engine;
+use rand::RngCore;
+use reqwest::Url;
+use ssh_key::{public::KeyData, PublicKey, SshSig};
 use tokio::sync::RwLock;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
-
-use ssh_key::{public::KeyData, PublicKey, SshSig};
 
 use crate::error::ServerError;
 
@@ -431,7 +431,6 @@ impl std::fmt::Debug for GithubKeys {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use httpmock::MockServer;
     use itertools::Itertools;
     use ssh_key::{
@@ -439,6 +438,8 @@ mod tests {
         HashAlg, PrivateKey,
     };
     use tracing_test::traced_test;
+
+    use super::*;
 
     // TODO: test with variable config.
 

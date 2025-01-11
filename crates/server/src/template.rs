@@ -53,12 +53,33 @@ impl Templates {
 
     /// Render specifically the download page, with all of the required fields.
     pub fn render_download_page(&self, fields: DownloadPageFields) -> String {
-        debug_assert!(!fields.username_source_url.as_str().ends_with('/'), "username source url should not have trailing slash =");
-        debug_assert!(!fields.username_source_url.as_str().contains(".keys"), "username source url should not end with or contain .keys");
-        debug_assert!(fields.upload_date < fields.expiry_date, "upload date should be before expiry date");
-        debug_assert!(fields.download_url.as_str().starts_with(fields.base_url.as_str()), "download url should start with base url");
-        debug_assert!(!fields.download_url.as_str().ends_with('/'), "download url should not end with trailing slash");
-        debug_assert!(fields.base_url.as_str().ends_with('/'), "base url should end with trailing slash");
+        debug_assert!(
+            !fields.username_source_url.as_str().ends_with('/'),
+            "username source url should not have trailing slash ="
+        );
+        debug_assert!(
+            !fields.username_source_url.as_str().contains(".keys"),
+            "username source url should not end with or contain .keys"
+        );
+        debug_assert!(
+            fields.upload_date < fields.expiry_date,
+            "upload date should be before expiry date"
+        );
+        debug_assert!(
+            fields
+                .download_url
+                .as_str()
+                .starts_with(fields.base_url.as_str()),
+            "download url should start with base url"
+        );
+        debug_assert!(
+            !fields.download_url.as_str().ends_with('/'),
+            "download url should not end with trailing slash"
+        );
+        debug_assert!(
+            fields.base_url.as_str().ends_with('/'),
+            "base url should end with trailing slash"
+        );
 
         self.handlebars
             .render("download_page", &fields)
@@ -69,23 +90,25 @@ impl Templates {
 #[cfg(test)]
 mod tests {
     use chrono::TimeZone;
+    use insta::assert_snapshot;
 
     use super::*;
-
-    use insta::assert_snapshot;
 
     #[test]
     fn test_render_download_page() {
         let templates = Templates::new();
         let fields = DownloadPageFields {
             file_name: "homework.docx".to_string(),
-            username_source_url: Url::parse("https://www.github.com/josiahbull").expect("hardcoded url to always be valid"),
+            username_source_url: Url::parse("https://www.github.com/josiahbull")
+                .expect("hardcoded url to always be valid"),
             username: "josiahbull".to_string(),
             upload_date: chrono::Utc.timestamp_opt(1_620_000_000, 0).unwrap(),
             expiry_date: chrono::Utc.timestamp_opt(1_630_000_000, 0).unwrap(),
             file_size_bytes: NonZeroU64::new(1024).expect("file size should be non-zero"),
-            download_url: Url::parse("https://www.downloads.mysite.com/homework.docx").expect("hardcoded url to always be valid"),
-            base_url: Url::parse("https://www.downloads.mysite.com/").expect("hardcoded url to always be valid"),
+            download_url: Url::parse("https://www.downloads.mysite.com/homework.docx")
+                .expect("hardcoded url to always be valid"),
+            base_url: Url::parse("https://www.downloads.mysite.com/")
+                .expect("hardcoded url to always be valid"),
         };
         let rendered = templates.render_download_page(fields);
 

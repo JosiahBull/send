@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod auth;
+mod config;
 mod error;
 mod template;
 mod tracing_config;
@@ -10,7 +11,6 @@ mod uploads;
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Context;
-use auth::KeySource;
 use axum::{
     body::Body,
     extract::{self, State},
@@ -19,6 +19,7 @@ use axum::{
     Json, Router,
 };
 use axum_extra::{headers, TypedHeader};
+use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use error::{ServerError, ServerResult};
 use reqwest::{
     header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, EXPIRES},
@@ -28,8 +29,6 @@ use template::DownloadPageFields;
 use tower_http::compression::CompressionLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use unique_ids::UploadId;
-
-use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 
 /// Global state shared for all requests.
 #[derive(Debug, Clone)]
@@ -364,26 +363,36 @@ pub fn router(app_state: AppState) -> Router {
 
 #[tokio::main]
 async fn main() {
+    let env = std::env::vars().collect::<std::collections::HashMap<_, _>>();
+    let config = config::Config::from_env(&env).expect("Failed to load config");
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let db_path = "/Users/josiahbull/Documents/send/test.db";
-
-    let db_pool = sqlx::SqlitePool::connect(&format!("sqlite://{}", db_path))
+    let db_pool = sqlx::SqlitePool::connect(&config.database.url)
         .await
-        .unwrap();
+        .unwrap_or_else(|_| panic!("Failed to connect to database at {}", &config.database.url));
 
-    let github_keys = Arc::new(auth::GithubKeys::new(vec![KeySource {
-        url: "https://github.com/josiahbull.keys".parse().unwrap(),
-        username: "josiahbull".to_owned(),
-    }]));
+    database::migrate(&db_pool)
+        .await
+        .expect("Failed to migrate database");
+
+    let github_keys = Arc::new(auth::GithubKeys::new(
+        config
+            .auth
+            .auth_keys
+            .clone()
+            .into_iter()
+            .map(|(url, username)| auth::KeySource { url, username })
+            .collect(),
+    ));
 
     let uploads = Arc::new(
         uploads::Uploads::new(db_pool.clone(), PathBuf::from("./cache"))
             .await
-            .unwrap(),
+            .expect("Failed to create uploads manager"),
     );
 
     let templates = Arc::new(template::Templates::new());
@@ -393,22 +402,30 @@ async fn main() {
         github_keys,
         uploads,
         templates,
-        url_base: Url::parse("http://127.0.0.1:3000/").unwrap(),
+        url_base: config.server.domain,
     };
 
     let app = router(app_state);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .unwrap();
+    let listener =
+        tokio::net::TcpListener::bind(format!("{}:{}", config.server.host, config.server.port))
+            .await
+            .expect("Failed to bind to port");
 
-    tracing::info!("Listening on {}", listener.local_addr().unwrap());
+    tracing::info!(
+        "Listening on {}",
+        listener.local_addr().expect("Failed to bind to port")
+    );
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c().await.unwrap();
+            tokio::signal::ctrl_c()
+                .await
+                .expect("Failed to listen for ctrl-c");
         })
         .await
-        .unwrap();
+        .expect("Failed to start server");
+
+    // TODO: wait for everything to close...
 
     tracing::info!("Server shutdown");
 }

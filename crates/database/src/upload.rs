@@ -3,6 +3,7 @@
 
 use bon::bon;
 use sqlx::types::{chrono, uuid};
+
 use crate::DatabaseError;
 
 /// Represents a user uploaded file in the database. See [`Upload::builder`] for creating a new instance,
@@ -75,7 +76,6 @@ pub struct Upload {
 
 #[bon]
 impl Upload {
-
     /// Creates a new `Upload` instance to be inserted into the database.
     ///
     /// Has full support for the `builder` syntax supported by the [`::bon`] crate.
@@ -169,7 +169,10 @@ impl Upload {
     }
 }
 
-#[allow(clippy::multiple_inherent_impl, reason = "The other impl is #[bon] annotated.")]
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "The other impl is #[bon] annotated."
+)]
 impl Upload {
     /// Selects an upload by its ID, returning `None` if it does not exist.
     ///
@@ -204,7 +207,10 @@ impl Upload {
     /// # Errors
     ///
     /// This function can return any error that [`sqlx::query_as`] can return.
-    pub async fn select_by_id<'e, E>(executor: E, id: uuid::Uuid) -> Result<Option<Self>, sqlx::Error>
+    pub async fn select_by_id<'e, E>(
+        executor: E,
+        id: uuid::Uuid,
+    ) -> Result<Option<Self>, sqlx::Error>
     where
         E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
     {

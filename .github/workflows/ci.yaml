@@ -1,10 +1,25 @@
-name: CI
+name: Tests
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
+    paths:
+      - ".cargo/*.toml"
+      - ".github/workflows/*.yaml"
+      - "Cargo.*"
+      - "mutants_attrs/**"
+      - "**/src/**"
+      - "**/tests/**"
+
+# see https://matklad.github.io/2021/09/04/fast-rust-builds.html
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CI: 1
+  RUST_BACKTRACE: short
+  RUSTFLAGS: "-W rust-2021-compatibility"
+  RUSTUP_MAX_RETRIES: 10
+  CARGO_MUTANTS_MINIMUM_TEST_TIMEOUT: 60
 
 jobs:
   build:
@@ -12,36 +27,46 @@ jobs:
 
     # Setup Rust
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: fmt
+          toolchain: beta
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Show Cargo and rustc version
+        run: |
+          cargo --version
+          rustc --version
 
+      - name: Build
+        run: cargo build --all-targets --all-features
+      - name: Test
+        run: cargo test --all-targets --all-features --workspace
 
-      # Run Clippy and Rustfmt
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-
       - name: Rustfmt
         run: cargo fmt --all -- --check
 
-      # Run tests
-      - name: Test
-        run: cargo test --all-targets --all-features
+      - name: Check typos
+        uses: crate-ci/typos@master
 
       # Use cargo tree, and fail if openssl is present
       - name: Check openssl
         run: cargo tree | grep openssl && exit 1 || exit 0
 
-      # Run cargo mutants
-      - name: Mutants
-        run: cargo mutants --all-features --all-targets
+      - run: cargo mutants -vV --in-place
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutants-out
+          path: mutants.out
+
+      # Build an artifact for this job
+      - name: Build release binary
+        run: cargo build --release
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: send-server
+          path: |
+            target/release/server
