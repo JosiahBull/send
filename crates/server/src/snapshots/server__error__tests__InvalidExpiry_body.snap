@@ -1,0 +1,6 @@
+---
+source: crates/server/src/error.rs
+expression: body
+snapshot_kind: text
+---
+Expiry must be between 60s and 2592000s

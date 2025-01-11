@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id: uuid::Uuid\",\n\n                upload_key as \"upload_key: String\",\n\n                uploader_username as \"uploader_username: String\",\n\n                file_name_on_disk as \"file_name_on_disk: uuid::Uuid\",\n                file_name as \"file_name: String\",\n                file_size as \"file_size: i64\",\n\n                created_at as \"created_at: chrono::DateTime<chrono::Utc>\",\n                updated_at as \"updated_at: chrono::DateTime<chrono::Utc>\",\n                expires_at as \"expires_at: chrono::DateTime<chrono::Utc>\",\n\n                uploaded_at as \"uploaded_at: chrono::DateTime<chrono::Utc>\",\n                deleted_at as \"deleted_at: chrono::DateTime<chrono::Utc>\"\n            FROM uploads\n            WHERE\n                expires_at <= ?\n                AND deleted_at IS NULL\n            ORDER BY expires_at ASC\n            LIMIT ? OFFSET ?;\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: uuid::Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "upload_key: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "uploader_username: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_name_on_disk: uuid::Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "file_name: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_size: i64",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 6,
+        "type_info": "Null"
+      },
+      {
+        "name": "updated_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 7,
+        "type_info": "Null"
+      },
+      {
+        "name": "expires_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 8,
+        "type_info": "Null"
+      },
+      {
+        "name": "uploaded_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 9,
+        "type_info": "Null"
+      },
+      {
+        "name": "deleted_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 10,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "3938ee95df67fd899282e43e075b93c47daeeb3b0d66028900dc02770e764f6d"
+}

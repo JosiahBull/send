@@ -1,0 +1,54 @@
+services:
+  server:
+    build: .
+    environment:
+      DATABASE_URL: "postgres://postgres:password@db:5432/server"
+      OTEL_SERVICE_NAME: "server"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://telemetry:4317
+      TRACE_SAMPLE_PROBABILITY: 1.0
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: server
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  telemetry:
+    image: grafana/otel-lgtm:0.8.0
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "cat", "/tmp/ready"]
+      timeout: 30s
+      retries: 10
+    environment:
+      ENABLE_LOGS_OTELCOL: 'true'
+      GF_AUTH_ANONYMOUS_ORG_NAME: 'Main Org.'
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      ENABLE_LOGS_PROMETHEUS: 'true'
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "3000:3000"
+    volumes:
+      - ./telemetry-config/tempo-config.yaml:/otel-lgtm/tempo-config.yaml
+      - ./telemetry-config/otelcon-config.yaml:/otel-lgtm/otelcol-config.yaml
+      - ./telemetry-config/grafana-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/grafana-dashboards.yaml
+      - ./telemetry-config/dashboards:/otel-lgtm/dashboards
+      - ./telemetry-config/alerts:/otel-lgtm/grafana/conf/provisioning/alerting
+      # Required for docker stats
+      - /var/run/docker.sock:/var/run/docker.sock
