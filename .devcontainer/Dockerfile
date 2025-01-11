@@ -1,0 +1,49 @@
+FROM ghcr.io/josiahbull/dotfiles:main
+
+# Install required packages.
+# NOTE: no point filtering app lists, or using --no-install-recommends as
+# this is a dev container and only expected to be built locally.
+RUN apt-get update && apt-get install -y \
+    curl \
+    libssl-dev \
+    pkg-config \
+    libudev-dev \
+    llvm \
+    clang \
+    gcc \
+    cmake \
+    libsqlite3-dev \
+    zlib1g-dev \
+    ca-certificates \
+    git
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustup toolchain install nightly
+
+# Install cargo-mutants, cargo-udeps, cargo-expand, cargo-audit
+# RUN cargo +nightly install cargo-udeps
+# RUN cargo install cargo-tarpaulin
+# RUN cargo install cargo-mutants
+# RUN cargo install cargo-expand
+# RUN cargo install cargo-audit
+
+# Install python + python packages that I use for normal development
+RUN apt-get install -y python3 python3-pip
+RUN pip3 install --break-system-packages thefuck pre-commit
+
+# Install docker + docker compose so we can start containers for testing inside of our devcontainer
+RUN install -m 0755 -d /etc/apt/keyrings
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+RUN chmod a+r /etc/apt/keyrings/docker.asc
+RUN echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
+RUN apt-get update
+RUN apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Set the shell to zsh
+RUN chsh -s /bin/zsh
+SHELL ["/bin/zsh", "-c"]

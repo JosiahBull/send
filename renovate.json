@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "automerge": true,
+  "extends": [
+    "config:recommended"
+  ],
+  "major": {
+    "automerge": true,
+    "stabilityDays": 90
+  },
+  "packageRules": [
+    {
+      "automerge": true,
+      "matchPackagePatterns": [
+        "^0\\."
+      ],
+      "stabilityDays": 90
+    }
+  ],
+  "pre-commit": {
+    "enabled": true
+  }
+}

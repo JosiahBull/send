@@ -2,8 +2,8 @@
 #![warn(clippy::all, clippy::pedantic)]
 
 mod error;
-mod upload;
 mod migrate;
+mod upload;
 
 pub use error::DatabaseError;
 pub use migrate::migrate;

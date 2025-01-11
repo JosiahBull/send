@@ -20,7 +20,11 @@ pub enum ServerError {
     #[error("Internal server error: {0}")]
     Internal(String),
 
-
+    // Config
+    #[error("Missing environment variable: {0}")]
+    MissingEnvVar(&'static str),
+    #[error("Invalid environment variable: {0}: {1}, failed due to: {2}")]
+    InvalidEnvVar(&'static str, String, #[source] anyhow::Error),
 
     // Auth
     #[error("Unauthorized")]
@@ -70,6 +74,8 @@ impl ServerError {
             Self::Internal(_) => "Internal",
             Self::Unauthorized => "Unauthorized",
             Self::BadRequest { .. } => "BadRequest",
+            Self::MissingEnvVar(_) => "MissingEnvVar",
+            Self::InvalidEnvVar(_, _, _) => "InvalidEnvVar",
             Self::MutlipartError { .. } => "MultipartError",
             Self::ParseError(_) => "ParseError",
             Self::InvalidExpiry { .. } => "InvalidExpiry",
@@ -94,6 +100,8 @@ impl ServerError {
             Self::Internal(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::Unauthorized => axum::http::StatusCode::FORBIDDEN,
             Self::BadRequest { .. } => axum::http::StatusCode::BAD_REQUEST,
+            Self::MissingEnvVar(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Self::InvalidEnvVar(_, _, _) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::MutlipartError { .. } => axum::http::StatusCode::BAD_REQUEST,
             Self::ParseError(_) => axum::http::StatusCode::BAD_REQUEST,
             Self::InvalidExpiry { .. } => axum::http::StatusCode::BAD_REQUEST,
@@ -138,8 +146,9 @@ impl IntoResponse for ServerError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use insta::{assert_debug_snapshot, assert_snapshot};
+
+    use super::*;
 
     #[tokio::test]
     async fn snapshot_error_codes() {
@@ -179,7 +188,9 @@ mod tests {
 
             // Extract body
             let body = response.into_body();
-            let body  = axum::body::to_bytes(body, 100_000).await.expect("to be able to collect body into string");
+            let body = axum::body::to_bytes(body, 100_000)
+                .await
+                .expect("to be able to collect body into string");
             let body = String::from_utf8(body.to_vec()).expect("response body to be valid utf-8");
 
             assert_snapshot!(format!("{}_body", name), body);

@@ -174,86 +174,87 @@ impl UploadId {
             );
         }
 
-        let id =
-            {
-                let mut rng = rand::thread_rng();
-                let distribution = rand::distributions::Uniform::new(0, GEN_ALPHABET.len());
+        let id = {
+            let mut rng = rand::thread_rng();
+            let distribution = rand::distributions::Uniform::new(0, GEN_ALPHABET.len());
 
-                debug_assert!(!GEN_ALPHABET.contains(&'z'), "z is used as a end stop representation in this loop, and cannot exist in the GEN_ALPHABET.");
+            debug_assert!(!GEN_ALPHABET.contains(&'z'), "z is used as a end stop representation in this loop, and cannot exist in the GEN_ALPHABET.");
 
-                #[allow(
-                    clippy::arithmetic_side_effects,
-                    reason = "Size of N checked to be >2."
-                )]
-                let id_iter = (&mut rng)
-                    .sample_iter(&distribution)
-                    .take(N - 1) // To leave space for the check-bit.
-                    .map(|i| {
-                        *GEN_ALPHABET.get(i).expect(
-                            "Generated value is guarenteed to be within bounds of alphabet.",
-                        )
-                    })
-                    .chain(std::iter::once('z')); // Push extra item into iterator for next step to work correctly, should not show up in final id.
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "Size of N checked to be >2."
+            )]
+            let id_iter = (&mut rng)
+                .sample_iter(&distribution)
+                .take(N - 1) // To leave space for the check-bit.
+                .map(|i| {
+                    *GEN_ALPHABET
+                        .get(i)
+                        .expect("Generated value is guarenteed to be within bounds of alphabet.")
+                })
+                .chain(std::iter::once('z')); // Push extra item into iterator for next step to work correctly, should not show up in final id.
 
-                // Build a string, ensuring that r + n does not occur, and v + v does not occur.
-                // We also must ensure that the final char is not an r, n or v.
-                let mut id = String::with_capacity(N);
-                for (first, second) in id_iter.tuple_windows() {
-                    let first = match (first, second) {
-                        // In iteration body
-                        ('v', 'v') => 'i',
-                        ('r', 'n') => 'i',
+            // Build a string, ensuring that r + n does not occur, and v + v does not occur.
+            // We also must ensure that the final char is not an r, n or v.
+            let mut id = String::with_capacity(N);
+            for (first, second) in id_iter.tuple_windows() {
+                let first = match (first, second) {
+                    // In iteration body
+                    ('v', 'v') => 'i',
+                    ('r', 'n') => 'i',
 
-                        // Final char
-                        ('v', 'z') => 'i',
-                        ('r', 'z') => 'i',
+                    // Final char
+                    ('v', 'z') => 'i',
+                    ('r', 'z') => 'i',
 
-                        (first, _) => first,
-                    };
-                    id.push(first);
-                }
+                    (first, _) => first,
+                };
+                id.push(first);
+            }
 
-                // Calculate the check-bit to append.
-                // The conversions between u64 and usize should be no-ops on a 64-bit system, if we
-                // ever need to compile for a platform where this is NOT the case the validity of
-                // this algorithm will need to be checked.
-                debug_assert!(
-                    std::mem::size_of::<usize>() == std::mem::size_of::<u64>(),
-                    "usize should be equal to u64 in memory on 64-bit systems."
-                );
-                #[allow(
-                    clippy::arithmetic_side_effects,
-                    reason = "Size of MAX > N > 2, and CHECK_ALPHABET.len() is non-zero."
-                )]
-                let check_char_idx = id
-                    .bytes()
-                    .map(|b| {
-                        *CHECK_LOOKUP
-                            .get(b as usize)
-                            .expect("Generated value is guarenteed to be within bounds.")
-                    })
-                    // SAFETY: Sum cannot overflow as N is less than the maximum allowable length.
-                    .sum::<u64>()
-                    % CHECK_ALPHABET.len() as u64;
-                id.push(*CHECK_ALPHABET.get(check_char_idx as usize).expect(
-                    "Generated value is guarenteed to be within bounds of check alphabet.",
-                ));
+            // Calculate the check-bit to append.
+            // The conversions between u64 and usize should be no-ops on a 64-bit system, if we
+            // ever need to compile for a platform where this is NOT the case the validity of
+            // this algorithm will need to be checked.
+            debug_assert!(
+                std::mem::size_of::<usize>() == std::mem::size_of::<u64>(),
+                "usize should be equal to u64 in memory on 64-bit systems."
+            );
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "Size of MAX > N > 2, and CHECK_ALPHABET.len() is non-zero."
+            )]
+            let check_char_idx = id
+                .bytes()
+                .map(|b| {
+                    *CHECK_LOOKUP
+                        .get(b as usize)
+                        .expect("Generated value is guarenteed to be within bounds.")
+                })
+                // SAFETY: Sum cannot overflow as N is less than the maximum allowable length.
+                .sum::<u64>()
+                % CHECK_ALPHABET.len() as u64;
+            id.push(
+                *CHECK_ALPHABET
+                    .get(check_char_idx as usize)
+                    .expect("Generated value is guarenteed to be within bounds of check alphabet."),
+            );
 
-                debug_assert!(
-                    !id.contains("rn"),
-                    "Should not contain rn which may be confused with m."
-                );
-                debug_assert!(
-                    !id.contains("vv"),
-                    "Should not contain vv which may be confused with w."
-                );
-                debug_assert!(
-                    !id.contains("z"),
-                    "Should not contain letter z, indicates bug in refactoring."
-                );
+            debug_assert!(
+                !id.contains("rn"),
+                "Should not contain rn which may be confused with m."
+            );
+            debug_assert!(
+                !id.contains("vv"),
+                "Should not contain vv which may be confused with w."
+            );
+            debug_assert!(
+                !id.contains("z"),
+                "Should not contain letter z, indicates bug in refactoring."
+            );
 
-                id
-            };
+            id
+        };
 
         Self(id)
     }
@@ -360,8 +361,9 @@ impl UploadId {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::convert::TryFrom;
+
+    use super::*;
 
     #[test]
     fn assert_largest_id_is_fixed() {
