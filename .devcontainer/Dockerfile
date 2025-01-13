@@ -1,4 +1,4 @@
-FROM ghcr.io/josiahbull/dotfiles:main
+FROM ghcr.io/josiahbull/dotfiles:latest
 
 # Install required packages.
 # NOTE: no point filtering app lists, or using --no-install-recommends as
@@ -23,11 +23,12 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup toolchain install nightly
 
 # Install cargo-mutants, cargo-udeps, cargo-expand, cargo-audit
-# RUN cargo +nightly install cargo-udeps
-# RUN cargo install cargo-tarpaulin
-# RUN cargo install cargo-mutants
-# RUN cargo install cargo-expand
-# RUN cargo install cargo-audit
+RUN cargo +nightly install cargo-udeps
+RUN cargo install cargo-tarpaulin
+RUN cargo install cargo-mutants
+RUN cargo install cargo-expand
+RUN cargo install cargo-audit
+RUN cargo install sqlx-cli
 
 # Install python + python packages that I use for normal development
 RUN apt-get install -y python3 python3-pip

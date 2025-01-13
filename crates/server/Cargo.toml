@@ -40,7 +40,7 @@ tracing-subscriber = { workspace = true, features = [
     "json",
 ] }
 uuid = { workspace = true, features = ["v4", "serde"] }
-url = { version = "2.5.4", features = ["serde"] }
+url = { workspace = true, features = ["serde"] }
 
 # For Validation.
 base64 = { workspace = true }
@@ -82,13 +82,14 @@ opentelemetry-http = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
 console-subscriber = { workspace = true }
 tower-otel-http-metrics = { workspace = true, features = ["axum"] }
-itertools = "0.14.0"
+itertools = { workspace = true }
+bon = { workspace = true }
 
 [dev-dependencies]
-insta = { version = "1.41.1" }
-tracing-test = "0.2.5"
-httpmock = "0.7.0"
-mutants = "0.0.3"
+insta = { workspace = true }
+tracing-test = { workspace = true }
+httpmock = { workspace = true }
+mutants = { workspace = true }
 
 [lints]
 workspace = true

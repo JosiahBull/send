@@ -379,15 +379,25 @@ async fn main() {
         .await
         .expect("Failed to migrate database");
 
-    let github_keys = Arc::new(auth::GithubKeys::new(
-        config
+    let github_keys = {
+        let sources_to_check = config
             .auth
             .auth_keys
             .clone()
             .into_iter()
             .map(|(url, username)| auth::KeySource { url, username })
-            .collect(),
-    ));
+            .collect();
+
+        let auth = auth::GithubKeys::builder()
+            .sources_to_check(sources_to_check)
+            .key_refresh_interval(config.auth.key_refresh_interval)
+            .max_number_of_keys(config.auth.max_number_of_keys_per_user)
+            .max_time_allowed_since_refresh(config.auth.max_time_allowed_since_refresh)
+            .nonce_time_to_live(config.auth.nonce_max_time_to_live)
+            .build();
+
+        Arc::new(auth)
+    };
 
     let uploads = Arc::new(
         uploads::Uploads::new(db_pool.clone(), PathBuf::from("./cache"))
