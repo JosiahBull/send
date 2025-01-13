@@ -41,12 +41,25 @@ tracing-opentelemetry = "0.28.0"
 tracing-opentelemetry-instrumentation-sdk = "0.24.0"
 tracing-subscriber = "0.3.18"
 uuid = "1.11.0"
+httpmock = "0.7.0"
+insta = "1.41.1"
+itertools = "0.14.0"
+mutants = "0.0.3"
+tokio-test = "0.4.4"
+tracing-test = "0.2.5"
+url = "2.5.4"
 
 # Insta recommends compiling with optimizations It takes longer on initial compile, but makes test
 # runs faster. https://insta.rs/docs/quickstart/
 [profile.dev.package]
 insta.opt-level = 3
 similar.opt-level = 3
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = true
 
 # Define lints for the workspace
 [workspace.lints.rust]
@@ -184,9 +197,3 @@ allow_attributes_without_reason = "forbid"
 # TODO: don't allow unimplemented!() or todo!() through CI.
 # TODO: lint check which throws an error if these lints are out of date with the template.
 # TODO: setup proper sorting here.
-
-[profile.release]
-lto = true
-codegen-units = 1
-opt-level = 3
-debug = true

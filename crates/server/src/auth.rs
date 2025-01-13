@@ -10,6 +10,7 @@ use std::{
 
 use axum_extra::headers::authorization::Credentials;
 use base64::Engine;
+use bon::bon;
 use rand::RngCore;
 use reqwest::Url;
 use ssh_key::{public::KeyData, PublicKey, SshSig};
@@ -21,27 +22,23 @@ use crate::error::ServerError;
 
 /// The length of the nonce in bytes.
 const NONCE_LENGTH: usize = 32;
-/// How long to keep a nonce active for in milliseconds, after which it will be expired and cannot be used to perform an upload.
-const NONCE_TTL_MS: u64 = 1000 * 60 * 5; // 5 minutes
-/// How often to refresh the keys from the sources in milliseconds.
-const KEY_REFRESH_INTERVAL_MS: u64 = 1000 * 60 * 30; // 1 hour
-/// The maximum time allowed since the keys were last refreshed in milliseconds, after which we will refuse to verify nonces.
-const MAX_TIME_ALLOWED_SINCE_REFRESH: u64 = 1000 * 60 * 60 * 24; // 24 hours
-/// The absolute maximum number of keys to hold at once.
-const MAX_NUMBER_OF_KEYS: usize = 20; // Should more than cover the number of keys for a single user.
 
+/// Represents a signature provided by a user which must be validated.
 #[derive(Debug)]
 pub struct AuthenticatedUpload {
+    /// The original nonce signed by the user.
     nonce: [u8; NONCE_LENGTH],
+    /// The signature provided by the user.
     signature: SshSig,
 }
 
+#[allow(clippy::missing_docs_in_private_items, reason = "Obvious naming.")]
 impl AuthenticatedUpload {
-    pub fn nonce(&self) -> &[u8; NONCE_LENGTH] {
+    pub const fn nonce(&self) -> &[u8; NONCE_LENGTH] {
         &self.nonce
     }
 
-    pub fn signature(&self) -> &SshSig {
+    pub const fn signature(&self) -> &SshSig {
         &self.signature
     }
 }
@@ -134,7 +131,9 @@ struct KeyDataInner {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeySource {
+    /// The URL to fetch the keys from.
     pub url: Url,
+    /// The username associated with the keys.
     pub username: String,
 }
 
@@ -166,13 +165,33 @@ pub struct GithubKeys {
     /// A reference to the tokio task spawned to handle refetching keys from the various providers
     /// on a regular interval.
     handle_keys: tokio::task::JoinHandle<()>,
+
+    /// How long to keep a nonce active for, after which it will be expired and cannot be used to perform an upload.
+    nonce_time_to_live: Duration,
+
+    /// How often to refresh the keys from the sources.
+    key_refresh_interval: Duration,
+
+    /// The maximum time allowed since the keys were last refreshed, after which we will refuse to verify nonces.
+    max_time_allowed_since_refresh: Duration,
+
+    /// The absolute maximum number of keys for a single user.
+    max_number_of_keys: usize,
 }
 
+#[bon]
 impl GithubKeys {
     #[tracing::instrument(skip(sources_to_check), fields(
         sources_to_check = ?sources_to_check.iter().take(15).map(|source| source.url.as_str()).collect::<Vec<_>>(),
     ), level = "debug")]
-    pub fn new(sources_to_check: Vec<KeySource>) -> Self {
+    #[builder]
+    pub fn new(
+        sources_to_check: Vec<KeySource>,
+        nonce_time_to_live: Duration,
+        key_refresh_interval: Duration,
+        max_time_allowed_since_refresh: Duration,
+        max_number_of_keys: usize,
+    ) -> Self {
         // Ensure sources_to_check is populated, are valid URLs, are unique, and end in .keys
         let sources_to_check: HashSet<KeySource> = sources_to_check.into_iter().collect();
         assert!(!sources_to_check.is_empty(), "No sources to check for keys");
@@ -247,7 +266,7 @@ impl GithubKeys {
                                     tokio::time::sleep(Duration::from_secs(1)).await;
                                 }
 
-                                if all_keys.len() > MAX_NUMBER_OF_KEYS {
+                                if all_keys.len() > max_number_of_keys {
                                     return Err(ServerError::Internal(format!(
                                         "Too many keys fetched: {}",
                                         all_keys.len()
@@ -269,7 +288,7 @@ impl GithubKeys {
                         _ = cancel_token.cancelled() => {
                             break;
                         }
-                        _ = tokio::time::sleep(Duration::from_millis(KEY_REFRESH_INTERVAL_MS)) => {}
+                        _ = tokio::time::sleep(key_refresh_interval) => {}
                     }
                 }
 
@@ -290,18 +309,18 @@ impl GithubKeys {
                             break;
                         }
                         mut inner = async {
-                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            tokio::time::sleep(Duration::from_secs(5)).await;
                             inner.write().await
                         } => {
                             let now = tokio::time::Instant::now();
-                            inner.active_nonces.retain(|_, instant| now.checked_duration_since(*instant).map_or(false, |d| d < Duration::from_millis(NONCE_TTL_MS)));
+                            inner.active_nonces.retain(|_, instant| now.checked_duration_since(*instant).is_some_and(|d| d < nonce_time_to_live));
 
                             // If we can't refresh the keys, stop performing any sort of verification.
                             // XXX: use durations to compare here, not MS.
-                            if chrono::Utc::now().signed_duration_since(inner.last_requested).num_milliseconds() as u64 > MAX_TIME_ALLOWED_SINCE_REFRESH {
+                            if chrono::Utc::now().signed_duration_since(inner.last_requested) > chrono::Duration::from_std(max_time_allowed_since_refresh).expect("to be able to convert") {
                                 tracing::error!(
                                     last_checked = inner.last_requested.to_rfc3339(),
-                                    timeout = MAX_TIME_ALLOWED_SINCE_REFRESH,
+                                    timeout = ?max_time_allowed_since_refresh,
                                     "Keys have not been refreshed in too long"
                                 );
                                 inner.active_nonces.clear();
@@ -320,6 +339,10 @@ impl GithubKeys {
             drop_guard,
             handle_tokens,
             handle_keys,
+            nonce_time_to_live,
+            key_refresh_interval,
+            max_time_allowed_since_refresh,
+            max_number_of_keys,
         }
     }
 
@@ -379,7 +402,7 @@ impl GithubKeys {
         {
             let mut inner = self.inner.write().await;
             if let Some(instant) = inner.active_nonces.remove(nonce) {
-                if instant.elapsed().as_millis() as u64 > NONCE_TTL_MS {
+                if instant.elapsed() > self.nonce_time_to_live {
                     return None;
                 }
             } else {
@@ -419,12 +442,23 @@ impl std::fmt::Debug for GithubKeys {
             drop_guard,
             handle_keys,
             handle_tokens,
+            nonce_time_to_live,
+            key_refresh_interval,
+            max_time_allowed_since_refresh,
+            max_number_of_keys,
         } = &self;
         f.debug_struct("GithubKeys")
             .field("inner", &inner)
             .field("drop_guard", &drop_guard)
             .field("handle_keys", &handle_keys)
             .field("handle_tokens", &handle_tokens)
+            .field("nonce_time_to_live", &nonce_time_to_live)
+            .field("key_refresh_interval", &key_refresh_interval)
+            .field(
+                "max_time_allowed_since_refresh",
+                &max_time_allowed_since_refresh,
+            )
+            .field("max_number_of_keys", &max_number_of_keys)
             .finish()
     }
 }
@@ -500,12 +534,18 @@ mod tests {
     async fn test_nonces_are_unique() {
         const NUM_TO_GENERATE: usize = 100_000;
 
-        let keys = GithubKeys::new(vec![KeySource {
-            url: "https://doesnotexistlakjdlfkj.com/testuser.keys"
-                .parse()
-                .expect("The URL to be parseable."),
-            username: "testuser".to_string(),
-        }]);
+        let keys = GithubKeys::builder()
+            .nonce_time_to_live(Duration::from_secs(10))
+            .key_refresh_interval(Duration::from_secs(10))
+            .max_time_allowed_since_refresh(Duration::from_secs(10))
+            .max_number_of_keys(10)
+            .sources_to_check(vec![KeySource {
+                url: "https://doesnotexistlakjdlfkj.com/testuser.keys"
+                    .parse()
+                    .expect("The URL to be parseable."),
+                username: "testuser".to_string(),
+            }])
+            .build();
         let mut nonces = Vec::with_capacity(NUM_TO_GENERATE);
         for _ in 0..nonces.len() {
             nonces.push(keys.generate_nonce().await);

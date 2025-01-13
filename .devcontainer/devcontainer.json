@@ -54,10 +54,10 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	"forwardPorts": [
 		3000
-	]
+	],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "uname -a",
+	"postCreateCommand": "pre-commit install"
 
 	// Configure tool-specific properties.
 	// "customizations": {},

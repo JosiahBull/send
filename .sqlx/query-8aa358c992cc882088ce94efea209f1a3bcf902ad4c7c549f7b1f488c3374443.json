@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: uuid::Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "upload_key: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "uploader_username: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_name_on_disk: uuid::Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "file_name: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_size: i64",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 6,
+        "type_info": "Null"
+      },
+      {
+        "name": "updated_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 7,
+        "type_info": "Null"
+      },
+      {
+        "name": "expires_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 8,
+        "type_info": "Null"
+      },
+      {
+        "name": "uploaded_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 9,
+        "type_info": "Null"
+      },
+      {
+        "name": "deleted_at: chrono::DateTime<chrono::Utc>",
+        "ordinal": 10,
+        "type_info": "Null"
+      }
+    ],
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ],
+    "parameters": {
+      "Right": 1
+    }
+  },
+  "hash": "8aa358c992cc882088ce94efea209f1a3bcf902ad4c7c549f7b1f488c3374443",
+  "query": "\n            SELECT\n                id as \"id: uuid::Uuid\",\n\n                upload_key as \"upload_key: String\",\n\n                uploader_username as \"uploader_username: String\",\n\n                file_name_on_disk as \"file_name_on_disk: uuid::Uuid\",\n                file_name as \"file_name: String\",\n                file_size as \"file_size: i64\",\n\n                created_at as \"created_at: chrono::DateTime<chrono::Utc>\",\n                updated_at as \"updated_at: chrono::DateTime<chrono::Utc>\",\n                expires_at as \"expires_at: chrono::DateTime<chrono::Utc>\",\n\n                uploaded_at as \"uploaded_at: chrono::DateTime<chrono::Utc>\",\n                deleted_at as \"deleted_at: chrono::DateTime<chrono::Utc>\"\n            FROM uploads\n            WHERE\n                file_name_on_disk = ?\n            "
+}

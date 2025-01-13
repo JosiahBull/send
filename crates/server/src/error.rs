@@ -64,6 +64,12 @@ pub enum ServerError {
     TokioJoinError(#[from] tokio::task::JoinError),
 }
 
+impl From<anyhow::Error> for ServerError {
+    fn from(error: anyhow::Error) -> Self {
+        Self::Internal(error.to_string())
+    }
+}
+
 impl ServerError {
     /// Get the name of a variant as a string, used for snapshots. Only used for testing.
     /// Should match name of the enum variant exactly, otherwise it's a bug.

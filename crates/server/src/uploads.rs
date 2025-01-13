@@ -22,7 +22,7 @@ const MAX_ALLOWED_FILE_SIZE: u64 = 1024 * 1024 * 1024 * 10; // 10 GB
 const MAX_ALLOWED_CACHE_SIZE: u64 = 1024 * 1024 * 1024 * 100; // 200 GB
 
 /// The interval with which to perform bookkeeping tasks.
-const BOOKKEEPING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60 * 1); // 1 minute
+const BOOKKEEPING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60); // 1 minute
 
 /// An abstraction for managing the lifetime of file uploads.
 #[derive(Debug)]
@@ -140,6 +140,25 @@ impl Uploads {
 
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let drop_guard = cancel_token.clone().drop_guard();
+
+        // On startup we validate all files in the cache and check if they have an entry in the database, cleaning up uploads that do not.
+        let mut entries = tokio::fs::read_dir(&cache_directory).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy();
+            let file_name = file_name.as_ref();
+            let file_name =
+                uuid::Uuid::parse_str(file_name).context("Failed to parse file name")?;
+
+            let upload = Upload::select_by_file_name_on_disk(&db_pool, file_name)
+                .await
+                .context("Failed to select upload by file name on disk")?;
+
+            if upload.is_none() {
+                tracing::warn!(file_name = %file_name, "Found orphaned file in cache directory, removing");
+                tokio::fs::remove_file(entry.path()).await?;
+            }
+        }
 
         let bookkeeping_handle = tokio::spawn({
             let db_pool = db_pool.clone();

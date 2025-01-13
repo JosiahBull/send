@@ -408,6 +408,76 @@ impl Upload {
         Ok(uploads)
     }
 
+    /// Selects an upload by its file name on disk, returning `None` if it does not exist.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use uuid::uuid;
+    /// # use sqlx::SqlitePool;
+    /// # use database::{Upload, migrate};
+    /// # tokio_test::block_on(async {
+    ///  let pool = SqlitePool::connect("sqlite::memory:").await?;
+    /// # migrate(&pool).await?;
+    /// # let new_upload = Upload::builder()
+    /// #     .upload_key("12345678".to_string()).expect("upload_key too long")
+    /// #     .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
+    /// #     .file_name("file_name".to_string()).expect("file_name too long")
+    /// #     .file_size(1024)
+    /// #     .now(chrono::Utc::now())
+    /// #     .expires_at(chrono::Utc::now() + chrono::Duration::days(30))
+    /// #     .build();
+    /// # new_upload.insert(&pool).await?;
+    /// # new_upload.file_name_on_disk = Some(uuid!("00000000-0000-0000-0000-000000000001"));
+    /// # new_upload.update(&pool).await?;
+    ///
+    /// let upload = Upload::select_by_file_name_on_disk(&pool, uuid!("00000000-0000-0000-0000-000000000001")).await?;
+    /// assert_eq!(upload.unwrap().file_name_on_disk, Some(uuid!("00000000-0000-0000-0000-000000000001")));
+    ///
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
+    /// ```
+    ///
+    /// # Errors
+    /// This function will return an error if the query execution fails.
+    pub async fn select_by_file_name_on_disk<'e, E>(
+        executor: E,
+        file_name_on_disk: uuid::Uuid,
+    ) -> Result<Option<Self>, sqlx::Error>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    {
+        let upload = sqlx::query_as!(
+            Upload,
+            r#"
+            SELECT
+                id as "id: uuid::Uuid",
+
+                upload_key as "upload_key: String",
+
+                uploader_username as "uploader_username: String",
+
+                file_name_on_disk as "file_name_on_disk: uuid::Uuid",
+                file_name as "file_name: String",
+                file_size as "file_size: i64",
+
+                created_at as "created_at: chrono::DateTime<chrono::Utc>",
+                updated_at as "updated_at: chrono::DateTime<chrono::Utc>",
+                expires_at as "expires_at: chrono::DateTime<chrono::Utc>",
+
+                uploaded_at as "uploaded_at: chrono::DateTime<chrono::Utc>",
+                deleted_at as "deleted_at: chrono::DateTime<chrono::Utc>"
+            FROM uploads
+            WHERE
+                file_name_on_disk = ?
+            "#,
+            file_name_on_disk
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        Ok(upload)
+    }
+
     /// Inserts the upload into the database.
     ///
     /// # Examples

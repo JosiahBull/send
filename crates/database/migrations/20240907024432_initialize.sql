@@ -20,6 +20,7 @@ CREATE TABLE uploads (
     deleted_at TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX idx_uploads_upload_key ON uploads(upload_key);
+CREATE INDEX idx_file_name_on_disk ON uploads(file_name_on_disk);
 -- Ensure that only one non-expired/deleted upload exists for a given upload_id at a time.
 CREATE UNIQUE INDEX idx_uploads_upload_id_deleted_at ON uploads(upload_key) WHERE deleted_at IS NULL;
 

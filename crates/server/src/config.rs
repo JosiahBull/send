@@ -272,20 +272,34 @@ impl UploadConfig {
 pub struct AuthConfig {
     /// The maximum time a nonce may live before it is considered expired.
     pub nonce_max_time_to_live: std::time::Duration,
+    /// The time to wait between refreshing keys, recommended to be no lower than 60 seconds.
+    pub key_refresh_interval: std::time::Duration,
+    /// The maximum number of keys a single user may have from a provided source, it's generally
+    /// recommended to keep this number low to prevent abuse.
+    pub max_number_of_keys_per_user: usize,
+    /// If a key upstream is not available, this is the maximum time to continue allowing authentication with stale
+    /// keys before rejecting all requests.
+    pub max_time_allowed_since_refresh: std::time::Duration,
     /// Url + usernames to authentication keys used for validation.
     pub auth_keys: HashMap<Url, String>,
 }
 
 impl AuthConfig {
-    /// Constructs an `AuthConfig` instance by loading `AUTH__NONCE_MAX_TIME_TO_LIVE` from the environment variables.
+    /// Constructs an `AuthConfig` instance by loading the following environment variables from the provided HashMap:
     ///
-    /// The time must specify units: `s`, `m`, `h`, `d`. For example, `1h`.
+    /// - `AUTH__NONCE_MAX_TIME_TO_LIVE`
+    /// - `AUTH__KEY_REFRESH_INTERVAL`
+    /// - `AUTH__MAX_NUMBER_OF_KEYS_PER_USER`
+    /// - `AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH`
+    /// - `AUTH__AUTH_KEYS__*` (where `*` is a URL)
+    ///
+    /// The time values must specify units: `s`, `m`, `h`, `d`. For example, `1h`.
     ///
     /// # Arguments
     /// * `env` - A HashMap of environment variables.
     ///
     /// # Errors
-    /// Returns a `ServerError` if the `AUTH__NONCE_MAX_TIME_TO_LIVE` environment variable is missing or invalid.
+    /// Returns a `ServerError` if any of the required environment variables are missing or invalid.
     ///
     /// # Examples
     ///
@@ -293,15 +307,52 @@ impl AuthConfig {
     /// let env = std::env::vars().collect::<HashMap<String, String>>();
     /// # let mut env = env;
     /// # env.insert("AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(), "100s");
+    /// # env.insert("AUTH__KEY_REFRESH_INTERVAL".to_string(), "60s");
+    /// # env.insert("AUTH__MAX_NUMBER_OF_KEYS_PER_USER".to_string(), "5");
+    /// # env.insert("AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH".to_string(), "1h");
+    /// # env.insert("AUTH__AUTH_KEYS__http://example.com".to_string(), "key1");
     /// # let env = env;
     /// let auth_config = AuthConfig::from_env(&env).expect("Failed to load auth configuration");
     /// println!("Nonce max time-to-live: {:?}", auth_config.nonce_max_time_to_live);
+    /// println!("Key refresh interval: {:?}", auth_config.key_refresh_interval);
+    /// println!("Max number of keys per user: {}", auth_config.max_number_of_keys_per_user);
+    /// println!("Max time allowed since refresh: {:?}", auth_config.max_time_allowed_since_refresh);
+    /// println!("Auth keys: {:?}", auth_config.auth_keys);
     /// ```
     pub fn from_env(env: &HashMap<String, String>) -> ServerResult<Self> {
         let nonce_max_time_to_live = parse_time(
             env.get("AUTH__NONCE_MAX_TIME_TO_LIVE")
                 .and_then(|s| if s.is_empty() { None } else { Some(s) })
                 .ok_or_else(|| ServerError::MissingEnvVar("AUTH__NONCE_MAX_TIME_TO_LIVE"))?,
+        )?;
+
+        let key_refresh_interval = parse_time(
+            env.get("AUTH__KEY_REFRESH_INTERVAL")
+                .and_then(|s| if s.is_empty() { None } else { Some(s) })
+                .ok_or_else(|| ServerError::MissingEnvVar("AUTH__KEY_REFRESH_INTERVAL"))?,
+        )?;
+
+        let max_number_of_keys_per_user = env
+            .get("AUTH__MAX_NUMBER_OF_KEYS_PER_USER")
+            .and_then(|s| if s.is_empty() { None } else { Some(s) })
+            .ok_or_else(|| ServerError::MissingEnvVar("AUTH__MAX_NUMBER_OF_KEYS_PER_USER"))?
+            .parse::<usize>()
+            .map_err(|e| {
+                ServerError::InvalidEnvVar(
+                    "AUTH__MAX_NUMBER_OF_KEYS_PER_USER",
+                    env.get("AUTH__MAX_NUMBER_OF_KEYS_PER_USER")
+                        .expect("already checked to be present")
+                        .to_string(),
+                    e.into(),
+                )
+            })?;
+
+        let max_time_allowed_since_refresh = parse_time(
+            env.get("AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH")
+                .and_then(|s| if s.is_empty() { None } else { Some(s) })
+                .ok_or_else(|| {
+                    ServerError::MissingEnvVar("AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH")
+                })?,
         )?;
 
         let auth_keys: HashMap<Url, String> = env
@@ -338,6 +389,9 @@ impl AuthConfig {
 
         Ok(Self {
             nonce_max_time_to_live,
+            key_refresh_interval,
+            max_number_of_keys_per_user,
+            max_time_allowed_since_refresh,
             auth_keys,
         })
     }
