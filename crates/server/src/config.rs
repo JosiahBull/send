@@ -91,7 +91,7 @@ impl ServerConfig {
                     env.get("SERVER__HOST")
                         .expect("already checked to be present")
                         .to_string(),
-                    e.into(),
+                    e.to_string(),
                 )
             })?;
 
@@ -106,7 +106,7 @@ impl ServerConfig {
                     env.get("SERVER__PORT")
                         .expect("already checked to be present")
                         .to_string(),
-                    e.into(),
+                    e.to_string(),
                 )
             })?;
 
@@ -121,7 +121,7 @@ impl ServerConfig {
                     env.get("SERVER__DOMAIN")
                         .expect("already checked to be present")
                         .to_string(),
-                    e.into(),
+                    e.to_string(),
                 )
             })?;
 
@@ -131,7 +131,7 @@ impl ServerConfig {
                 env.get("SERVER__DOMAIN")
                     .expect("already checked to be present")
                     .to_string(),
-                anyhow::anyhow!("Invalid URL scheme"),
+                "Invalid URL scheme".to_string(),
             ));
         }
         if domain.cannot_be_a_base() {
@@ -140,7 +140,7 @@ impl ServerConfig {
                 env.get("SERVER__DOMAIN")
                     .expect("already checked to be present")
                     .to_string(),
-                anyhow::anyhow!("Invalid URL"),
+                "Invalid URL".to_string(),
             ));
         }
 
@@ -191,9 +191,15 @@ pub struct UploadConfig {
     /// The directory to store files in.
     pub cache_directory: PathBuf,
     /// The maximum size of the uploads directory before we reject new uploads.
-    pub max_size: u64,
+    pub max_cache_size_bytes: u64,
+    /// The maximum size of any individual file before we reject it.
+    pub max_file_size_bytes: u64,
+    /// How often to perform book keeping and cleanup expired files.
+    pub book_keeping_interval: std::time::Duration,
+    /// The minimum time a file must live in the cache.
+    pub min_file_time_to_live: std::time::Duration,
     /// The maximum time a file may live in the cache before it is considered expired and summarily deleted.
-    pub max_time: std::time::Duration,
+    pub max_file_time_to_live: std::time::Duration,
 }
 
 impl UploadConfig {
@@ -217,19 +223,26 @@ impl UploadConfig {
     /// let env = std::env::vars().collect::<HashMap<String, String>>();
     /// # let mut env = env;
     /// # env.insert("UPLOAD__CACHE_DIRECTORY".to_string(), "/tmp/uploads");
-    /// # env.insert("UPLOAD__MAX_SIZE".to_string(), "10MB");
-    /// # env.insert("UPLOAD__MAX_TIME".to_string(), "1h");
+    /// # env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "10MB");
+    /// # env.insert("UPLOAD__MAX_FILE_SIZE".to_string(), "1MB");
+    /// # env.insert("UPLOAD__BOOK_KEEPING_INTERVAL".to_string(), "1h");
+    /// # env.insert("UPLOAD__MAX_FILE_TIME_TO_LIVE".to_string(), "1h");
     /// # let env = env;
     /// let upload_config = UploadConfig::from_env(&env).expect("Failed to load upload configuration");
     /// println!(
-    ///     "Cache directory: {:?}, Max size: {}, Max time: {}",
+    /// println!(
+    ///     "Cache directory: {:?}, max cache size: {}, max file size: {}, book keeping interval: {:?}, max file time to live: {:?}",
     ///     upload_config.cache_directory,
-    ///     upload_config.max_size,
-    ///     upload_config.max_time
+    ///     upload_config.max_cache_size_bytes,
+    ///     upload_config.max_file_size_bytes,
+    ///     upload_config.book_keeping_interval,
+    ///     upload_config.max_file_time_to_live
     /// );
     /// # assert_eq!(upload_config.cache_directory, std::path::PathBuf::from("/tmp/uploads"));
-    /// # assert_eq!(upload_config.max_size, 10 * 1024 * 1024);
-    /// # assert_eq!(upload_config.max_time, std::time::Duration::from_secs(60 * 60));
+    /// # assert_eq!(upload_config.max_cache_size_bytes, 10 * 1024 * 1024);
+    /// # assert_eq!(upload_config.max_file_size_bytes, 1 * 1024 * 1024);
+    /// # assert_eq!(upload_config.book_keeping_interval, std::time::Duration::from_secs(60 * 60));
+    /// # assert_eq!(upload_config.max_file_time_to_live, std::time::Duration::from_secs(60 * 60));
     /// ```
     pub fn from_env(env: &HashMap<String, String>) -> ServerResult<Self> {
         let cache_directory = env
@@ -243,26 +256,52 @@ impl UploadConfig {
                     env.get("UPLOAD__CACHE_DIRECTORY")
                         .expect("already checked to be present")
                         .to_string(),
-                    e.into(),
+                    e.to_string(),
                 )
             })?;
 
-        let max_size = parse_size(
-            env.get("UPLOAD__MAX_SIZE")
+        let max_cache_size_bytes = parse_size(
+            env.get("UPLOAD__MAX_CACHE_SIZE")
                 .and_then(|s| if s.is_empty() { None } else { Some(s) })
-                .ok_or_else(|| ServerError::MissingEnvVar("UPLOAD__MAX_SIZE"))?,
+                .ok_or_else(|| ServerError::MissingEnvVar("UPLOAD__MAX_CACHE_SIZE"))?,
+            "UPLOAD__MAX_CACHE_SIZE",
         )?;
 
-        let max_time = parse_time(
-            env.get("UPLOAD__MAX_TIME")
+        let max_file_size_bytes = parse_size(
+            env.get("UPLOAD__MAX_FILE_SIZE")
                 .and_then(|s| if s.is_empty() { None } else { Some(s) })
-                .ok_or_else(|| ServerError::MissingEnvVar("UPLOAD__MAX_TIME"))?,
+                .ok_or_else(|| ServerError::MissingEnvVar("UPLOAD__MAX_FILE_SIZE"))?,
+            "UPLOAD__MAX_FILE_SIZE",
+        )?;
+
+        let book_keeping_interval = parse_time(
+            env.get("UPLOAD__BOOK_KEEPING_INTERVAL")
+                .and_then(|s| if s.is_empty() { None } else { Some(s) })
+                .ok_or_else(|| ServerError::MissingEnvVar("UPLOAD__BOOK_KEEPING_INTERVAL"))?,
+            "UPLOAD__BOOK_KEEPING_INTERVAL",
+        )?;
+
+        let min_file_time_to_live = parse_time(
+            env.get("UPLOAD__MIN_FILE_TIME_TO_LIVE")
+                .and_then(|s| if s.is_empty() { None } else { Some(s) })
+                .ok_or_else(|| ServerError::MissingEnvVar("UPLOAD__MIN_FILE_TIME_TO_LIVE"))?,
+            "UPLOAD__MIN_FILE_TIME_TO_LIVE",
+        )?;
+
+        let max_file_time_to_live = parse_time(
+            env.get("UPLOAD__MAX_FILE_TIME_TO_LIVE")
+                .and_then(|s| if s.is_empty() { None } else { Some(s) })
+                .ok_or_else(|| ServerError::MissingEnvVar("UPLOAD__MAX_FILE_TIME_TO_LIVE"))?,
+            "UPLOAD__MAX_FILE_TIME_TO_LIVE",
         )?;
 
         Ok(Self {
             cache_directory,
-            max_size,
-            max_time,
+            max_cache_size_bytes,
+            max_file_size_bytes,
+            book_keeping_interval,
+            min_file_time_to_live,
+            max_file_time_to_live,
         })
     }
 }
@@ -324,12 +363,14 @@ impl AuthConfig {
             env.get("AUTH__NONCE_MAX_TIME_TO_LIVE")
                 .and_then(|s| if s.is_empty() { None } else { Some(s) })
                 .ok_or_else(|| ServerError::MissingEnvVar("AUTH__NONCE_MAX_TIME_TO_LIVE"))?,
+            "AUTH__NONCE_MAX_TIME_TO_LIVE",
         )?;
 
         let key_refresh_interval = parse_time(
             env.get("AUTH__KEY_REFRESH_INTERVAL")
                 .and_then(|s| if s.is_empty() { None } else { Some(s) })
                 .ok_or_else(|| ServerError::MissingEnvVar("AUTH__KEY_REFRESH_INTERVAL"))?,
+            "AUTH__KEY_REFRESH_INTERVAL",
         )?;
 
         let max_number_of_keys_per_user = env
@@ -343,7 +384,7 @@ impl AuthConfig {
                     env.get("AUTH__MAX_NUMBER_OF_KEYS_PER_USER")
                         .expect("already checked to be present")
                         .to_string(),
-                    e.into(),
+                    e.to_string(),
                 )
             })?;
 
@@ -353,37 +394,49 @@ impl AuthConfig {
                 .ok_or_else(|| {
                     ServerError::MissingEnvVar("AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH")
                 })?,
+            "AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH",
         )?;
 
-        let auth_keys: HashMap<Url, String> = env
-            .iter()
-            .filter(|(k, _)| k.starts_with("AUTH__AUTH_KEYS__"))
-            .map(|(k, v)| {
-                let url = k
-                    .trim_start_matches("AUTH__AUTH_KEYS__")
-                    .split("__")
-                    .next()
-                    .expect("Failed to parse URL");
-                let url = Url::parse(url).expect("Failed to parse URL");
-                (url, v.to_string())
-            })
-            .collect();
+        let mut auth_keys = HashMap::new();
+        let mut index = 0_usize;
+
+        loop {
+            let username_key = format!("AUTH__AUTH_KEYS__{}__USERNAME", index);
+            let url_key = format!("AUTH__AUTH_KEYS__{}__URL", index);
+
+            let username = match env.get(&username_key) {
+                Some(username) => username,
+                None => break,
+            };
+
+            let url = match env.get(&url_key) {
+                Some(url) => Url::parse(url).map_err(|e| {
+                    ServerError::InvalidEnvVar("AUTH__AUTH_KEYS__*", url.to_string(), e.to_string())
+                })?,
+                None => break,
+            };
+
+            auth_keys.insert(url, username.to_string());
+            index = index.saturating_add(1);
+            if index > 10_000 {
+                panic!("Too many AUTH__AUTH_KEYS__* entries");
+            }
+        }
 
         // All of the keys should end in .keys and be valid URLs with a scheme and no trailing slash.
-        if auth_keys.iter().any(|(url, _)| {
-            url.scheme().is_empty() || url.cannot_be_a_base() || !url.path().is_empty()
-        }) {
+        if auth_keys
+            .iter()
+            .any(|(url, _)| url.scheme().is_empty() || url.cannot_be_a_base())
+        {
             let first_failed_key = auth_keys
                 .iter()
-                .find(|(url, _)| {
-                    url.scheme().is_empty() || url.cannot_be_a_base() || !url.path().is_empty()
-                })
+                .find(|(url, _)| url.scheme().is_empty() || url.cannot_be_a_base())
                 .expect("already checked to be present");
 
             return Err(ServerError::InvalidEnvVar(
                 "AUTH__AUTH_KEYS__*",
                 format!("{:?}", first_failed_key),
-                anyhow::anyhow!("Invalid URL"),
+                "Invalid URL".to_string(),
             ));
         }
 
@@ -413,30 +466,32 @@ impl AuthConfig {
 /// let size = parse_size("10MB").expect("Failed to parse size");
 /// assert_eq!(size, 10 * 1024 * 1024);
 /// ```
-fn parse_size(size_str: &str) -> ServerResult<u64> {
-    let (value, unit) = size_str
-        .trim()
-        .split_at(size_str.len().checked_sub(2).ok_or_else(|| {
-            ServerError::InvalidEnvVar(
-                "UPLOAD__MAX_SIZE",
-                size_str.to_string(),
-                anyhow::anyhow!("Invalid size string"),
-            )
-        })?);
+fn parse_size(size_str: &str, variable_name: &'static str) -> ServerResult<u64> {
+    let (value, unit) = size_str.trim().split_at(
+        size_str
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
+            .ok_or_else(|| {
+                ServerError::InvalidEnvVar(
+                    variable_name,
+                    size_str.to_string(),
+                    "Invalid size string".to_string(),
+                )
+            })?,
+    );
     let value: u64 = value.parse::<u64>().map_err(|e| {
-        ServerError::InvalidEnvVar("UPLOAD__MAX_SIZE", size_str.to_string(), e.into())
+        ServerError::InvalidEnvVar(variable_name, size_str.to_string(), e.to_string())
     })?;
     match unit.to_uppercase().as_str() {
-        "B" => Ok(value),
-        "KB" => Ok(value.checked_mul(1024).expect("Size overflow")),
-        "MB" => Ok(value.checked_mul(1024 * 1024).expect("Size overflow")),
-        "GB" => Ok(value
+        "" | "B" => Ok(value),
+        "K" | "KB" => Ok(value.checked_mul(1024).expect("Size overflow")),
+        "M" | "MB" => Ok(value.checked_mul(1024 * 1024).expect("Size overflow")),
+        "G" | "GB" => Ok(value
             .checked_mul(1024 * 1024 * 1024)
             .expect("Size overflow")),
         got => Err(ServerError::InvalidEnvVar(
-            "UPLOAD__MAX_SIZE",
+            variable_name,
             size_str.to_string(),
-            anyhow::anyhow!("Unsupported unit: {}", got),
+            format!("Unsupported unit: {}", got),
         )),
     }
 }
@@ -461,18 +516,18 @@ fn parse_size(size_str: &str) -> ServerResult<u64> {
 /// assert!(time.is_err());
 /// assert_eq!(time.unwrap_err().to_string(), "Unsupported unit: H");
 /// ```
-fn parse_time(time_str: &str) -> ServerResult<std::time::Duration> {
+fn parse_time(time_str: &str, variable_name: &'static str) -> ServerResult<std::time::Duration> {
     let (value, unit) = time_str
         .trim()
         .split_at(time_str.len().checked_sub(1).ok_or_else(|| {
             ServerError::InvalidEnvVar(
-                "UPLOAD__MAX_TIME",
+                variable_name,
                 time_str.to_string(),
-                anyhow::anyhow!("Length too short"),
+                "Length too short".to_string(),
             )
         })?);
     let value: u64 = value.parse::<u64>().map_err(|e| {
-        ServerError::InvalidEnvVar("UPLOAD__MAX_TIME", time_str.to_string(), e.into())
+        ServerError::InvalidEnvVar(variable_name, time_str.to_string(), e.to_string())
     })?;
     let seconds = match unit.to_lowercase().as_str() {
         "s" => Ok(value),
@@ -480,9 +535,9 @@ fn parse_time(time_str: &str) -> ServerResult<std::time::Duration> {
         "h" => Ok(value.checked_mul(60 * 60).expect("Time overflow")),
         "d" => Ok(value.checked_mul(60 * 60 * 24).expect("Time overflow")),
         got => Err(ServerError::InvalidEnvVar(
-            "UPLOAD__MAX_TIME",
+            variable_name,
             time_str.to_string(),
-            anyhow::anyhow!("Unsupported unit: {}", got),
+            format!("Unsupported unit: {}", got),
         )),
     }?;
 
@@ -502,10 +557,15 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("SERVER__HOST".to_string(), "127.0.0.1".to_string());
         env.insert("SERVER__PORT".to_string(), "8080".to_string());
+        env.insert("SERVER__DOMAIN".to_string(), "http://owo.com".to_string());
 
         let server_config = ServerConfig::from_env(&env).expect("Failed to load ServerConfig");
         assert_eq!(server_config.host, Ipv4Addr::new(127, 0, 0, 1));
         assert_eq!(server_config.port, 8080);
+        assert_eq!(
+            server_config.domain,
+            Url::parse("http://owo.com").expect("Failed to parse URL")
+        );
     }
 
     #[test]
@@ -561,16 +621,33 @@ mod tests {
             "UPLOAD__CACHE_DIRECTORY".to_string(),
             "/tmp/uploads".to_string(),
         );
-        env.insert("UPLOAD__MAX_SIZE".to_string(), "10MB".to_string());
-        env.insert("UPLOAD__MAX_TIME".to_string(), "1h".to_string());
+        env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "10MB".to_string());
+        env.insert("UPLOAD__MAX_FILE_SIZE".to_string(), "1MB".to_string());
+        env.insert(
+            "UPLOAD__BOOK_KEEPING_INTERVAL".to_string(),
+            "1h".to_string(),
+        );
+        env.insert(
+            "UPLOAD__MIN_FILE_TIME_TO_LIVE".to_string(),
+            "30m".to_string(),
+        );
+        env.insert(
+            "UPLOAD__MAX_FILE_TIME_TO_LIVE".to_string(),
+            "1h".to_string(),
+        );
 
         let upload_config = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
         assert_eq!(upload_config.cache_directory, PathBuf::from("/tmp/uploads"));
-        assert_eq!(upload_config.max_size, 10 * 1024 * 1024);
+        assert_eq!(upload_config.max_cache_size_bytes, 10 * 1024 * 1024);
         assert_eq!(
-            upload_config.max_time,
+            upload_config.max_file_time_to_live,
             std::time::Duration::from_secs(60 * 60)
         );
+        assert_eq!(
+            upload_config.book_keeping_interval,
+            std::time::Duration::from_secs(60 * 60)
+        );
+        assert_eq!(upload_config.max_file_size_bytes, 1024 * 1024);
     }
 
     #[test]
@@ -580,20 +657,35 @@ mod tests {
             "UPLOAD__CACHE_DIRECTORY".to_string(),
             "/tmp/uploads".to_string(),
         );
-        env.insert("UPLOAD__MAX_TIME".to_string(), "1h".to_string());
-        env.insert("UPLOAD__MAX_SIZE".to_string(), "1GB".to_string());
-        let upload_config = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
-        assert_eq!(upload_config.max_size, 1024 * 1024 * 1024);
-
-        let mut env = HashMap::new();
+        env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "1GB".to_string());
+        env.insert("UPLOAD__MAX_FILE_SIZE".to_string(), "1GB".to_string());
         env.insert(
-            "UPLOAD__CACHE_DIRECTORY".to_string(),
-            "/tmp/uploads".to_string(),
+            "UPLOAD__BOOK_KEEPING_INTERVAL".to_string(),
+            "1h".to_string(),
         );
-        env.insert("UPLOAD__MAX_TIME".to_string(), "1h".to_string());
-        env.insert("UPLOAD__MAX_SIZE".to_string(), "500KB".to_string());
+        env.insert(
+            "UPLOAD__MIN_FILE_TIME_TO_LIVE".to_string(),
+            "30m".to_string(),
+        );
+        env.insert(
+            "UPLOAD__MAX_FILE_TIME_TO_LIVE".to_string(),
+            "1h".to_string(),
+        );
         let upload_config = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
-        assert_eq!(upload_config.max_size, 500 * 1024);
+        assert_eq!(upload_config.max_cache_size_bytes, 1024 * 1024 * 1024);
+        assert_eq!(upload_config.max_file_size_bytes, 1024 * 1024 * 1024);
+        assert_eq!(
+            upload_config.min_file_time_to_live,
+            Duration::from_secs(30 * 60)
+        );
+        assert_eq!(
+            upload_config.max_file_time_to_live,
+            Duration::from_secs(60 * 60)
+        );
+
+        env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "500KB".to_string());
+        let upload_config = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
+        assert_eq!(upload_config.max_cache_size_bytes, 500 * 1024);
     }
 
     #[test]
@@ -603,15 +695,23 @@ mod tests {
             "UPLOAD__CACHE_DIRECTORY".to_string(),
             "/tmp/uploads".to_string(),
         );
-        env.insert("UPLOAD__MAX_TIME".to_string(), "1h".to_string());
-        env.insert("UPLOAD__MAX_SIZE".to_string(), "1.5GB".to_string());
+        env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "1.5GB".to_string());
+        env.insert("UPLOAD__MAX_FILE_SIZE".to_string(), "1GB".to_string());
+        env.insert(
+            "UPLOAD__BOOK_KEEPING_INTERVAL".to_string(),
+            "1h".to_string(),
+        );
+        env.insert(
+            "UPLOAD__MAX_FILE_TIME_TO_LIVE".to_string(),
+            "1h".to_string(),
+        );
 
         let err = UploadConfig::from_env(&env);
 
         assert!(err.is_err());
         assert_eq!(
             err.expect_err("Should fail due to float value").to_string(),
-            "Invalid environment variable: UPLOAD__MAX_SIZE: 1.5GB, failed due to: invalid digit found in string"
+            "Invalid environment variable: UPLOAD__MAX_CACHE_SIZE: 1.5GB, failed due to: invalid digit found in string"
         );
     }
 
@@ -622,15 +722,22 @@ mod tests {
             "AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(),
             "100s".to_string(),
         );
+        env.insert("AUTH__KEY_REFRESH_INTERVAL".to_string(), "60s".to_string());
+        env.insert(
+            "AUTH__MAX_NUMBER_OF_KEYS_PER_USER".to_string(),
+            "5".to_string(),
+        );
+        env.insert(
+            "AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH".to_string(),
+            "1h".to_string(),
+        );
         let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
         assert_eq!(auth_config.nonce_max_time_to_live, Duration::from_secs(100));
 
-        let mut env = HashMap::new();
         env.insert("AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(), "5m".to_string());
         let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
         assert_eq!(auth_config.nonce_max_time_to_live, Duration::from_secs(300));
 
-        let mut env = HashMap::new();
         env.insert("AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(), "1h".to_string());
         let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
         assert_eq!(
@@ -638,7 +745,6 @@ mod tests {
             Duration::from_secs(3600)
         );
 
-        let mut env = HashMap::new();
         env.insert("AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(), "1d".to_string());
         let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
         assert_eq!(
@@ -660,7 +766,7 @@ mod tests {
         assert!(err.is_err());
         assert_eq!(
             err.expect_err("Should fail due to float value").to_string(),
-            "Invalid environment variable: UPLOAD__MAX_TIME: 1.5h, failed due to: invalid digit found in string"
+            "Invalid environment variable: AUTH__NONCE_MAX_TIME_TO_LIVE: 1.5h, failed due to: invalid digit found in string"
         );
     }
 }

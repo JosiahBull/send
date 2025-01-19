@@ -1,16 +1,17 @@
 #![doc = include_str!("../README.md")]
 
 mod auth;
+mod build_info;
 mod config;
 mod error;
+mod extractors;
 mod template;
 mod tracing_config;
 mod unique_ids;
 mod uploads;
 
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
-use anyhow::Context;
 use axum::{
     body::Body,
     extract::{self, State},
@@ -21,6 +22,7 @@ use axum::{
 use axum_extra::{headers, TypedHeader};
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use error::{ServerError, ServerResult};
+use futures::TryStreamExt;
 use reqwest::{
     header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, EXPIRES},
     Url,
@@ -33,8 +35,6 @@ use unique_ids::UploadId;
 /// Global state shared for all requests.
 #[derive(Debug, Clone)]
 pub struct AppState {
-    /// Database used for persistence, typically sqlite.
-    db_pool: sqlx::SqlitePool,
     /// AUthentication service which relies on ssh keys.
     github_keys: Arc<auth::GithubKeys>,
     /// Upload manager for abstracing file uploads/downloads.
@@ -61,7 +61,7 @@ async fn upload(
     TypedHeader(headers::Authorization(token)): TypedHeader<
         headers::Authorization<auth::AuthenticatedUpload>,
     >,
-    mut multipart: extract::Multipart,
+    mut upload_fields: extractors::UploadFields,
 ) -> ServerResult<Json<UploadId>> {
     let username = match state
         .github_keys
@@ -72,99 +72,25 @@ async fn upload(
         None => return Err(ServerError::Unauthorized),
     };
 
-    // Extract the fields from the first 3 parts of the multi part.
-    let (file_name, file_size, expiry) = {
-        let mut file_name = None;
-        let mut file_size = None;
-        let mut expiry_secs = None;
-
-        for _ in 0..3 {
-            let field = multipart
-                .next_field()
-                .await?
-                .ok_or_else(|| ServerError::BadRequest {
-                    reason: "Missing field".to_string(),
-                })?;
-
-            let name = field.name().ok_or_else(|| ServerError::BadRequest {
-                reason: "Missing field name".to_string(),
-            })?;
-
-            match name {
-                "file_name" => file_name = Some(field.text().await.map_err(ServerError::from)?),
-                "file_size" => file_size = Some(field.text().await.map_err(ServerError::from)?),
-                "expiry_secs" => expiry_secs = Some(field.text().await.map_err(ServerError::from)?),
-                n => {
-                    return Err(ServerError::BadRequest {
-                        reason: format!("Unknown field: {}", n),
-                    })
-                }
-            }
-        }
-
-        let file_name = file_name.ok_or_else(|| ServerError::BadRequest {
-            reason: "Missing 'file_name' field".to_string(),
-        })?;
-        let file_size = file_size
-            .ok_or_else(|| ServerError::BadRequest {
-                reason: "Missing 'file_size' field".to_string(),
-            })?
-            .parse()?;
-        let expiry_secs: u64 = expiry_secs
-            .ok_or_else(|| ServerError::BadRequest {
-                reason: "Missing 'expiry_secs' field".to_string(),
-            })?
-            .parse()?;
-
-        let expiry = std::time::Duration::from_secs(expiry_secs);
-
-        (file_name, file_size, expiry)
-    };
-
     let key = state
         .uploads
-        .preflight_upload(username, file_name, file_size, expiry)
+        .preflight_upload()
+        .uploader_username(username)
+        .file_name(upload_fields.file_name)
+        .file_size(upload_fields.file_size as i64)
+        .expiry(upload_fields.expiry)
+        .call()
         .await?;
 
-    let mut field = {
-        let field = match multipart.next_field().await? {
-            Some(field) => field,
-            None => {
-                return Err(ServerError::BadRequest {
-                    reason: "Missing 'file' field".to_string(),
-                })
-            }
-        };
+    let field = extractors::extract_field(&mut upload_fields.multipart, "file").await?;
 
-        if field.name().ok_or_else(|| ServerError::BadRequest {
-            reason: "Missing 'file' field name".to_string(),
-        })? != "file"
-        {
-            return Err(ServerError::BadRequest {
-                reason: "Invalid 'file' field name".to_string(),
-            });
-        }
-
-        field
-    };
-
-    let s = async_stream::stream! {
-        while let Some(chunk) = field
-            .chunk()
-            .await
-            .context("Failed to read chunk")?
-        {
-            yield Ok(chunk.to_vec()); // TODO: this should use bytes::Bytes throughout
-        }
-    };
-    let s = Box::pin(s);
+    let s = field.into_stream().map_err(ServerError::from);
 
     state
         .uploads
-        .upload(key.clone(), s) // XXX: don't have to clone here -> see recent article
-        .await
-        .context("Failed to upload file")
-        .unwrap();
+        // XXX: don't have to clone here, or could make this into a cheap clone by making Key Copy via a byte slice.
+        .upload(key.clone(), upload_fields.file_size, s)
+        .await?;
 
     Ok(Json(key))
 }
@@ -264,6 +190,21 @@ async fn static_404() -> axum::http::Response<Body> {
         .expect("Failed to create response")
 }
 
+/// Returns a static robots.txt response.
+async fn static_robots_txt() -> axum::http::Response<Body> {
+    /// The static robots.txt response bytes.
+    const RESPONSE_BYTES: &str = "User-agent: *\nDisallow: /";
+
+    // build a resposne from the bytes and headers.
+    axum::http::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header("Content-Type", "text/plain")
+        .header("Cache-Control", "public, max-age=604800, must-revalidate") // 1 week
+        .header("Expires", "604800")
+        .body(RESPONSE_BYTES.into())
+        .expect("Failed to create response")
+}
+
 /// Constructs a static response at compile time from constant data. Useful for embedding static
 /// files into the binary at compile time.
 const fn build_response_for_static_file(
@@ -307,6 +248,7 @@ pub fn router(app_state: AppState) -> Router {
             }),
         )
         // Static Resources
+        .route("/robots.txt", get(static_robots_txt))
         .route(
             "/favicon.ico",
             get(|| async {
@@ -342,16 +284,16 @@ pub fn router(app_state: AppState) -> Router {
         // State and middleware
         .with_state(app_state)
         // include trace context as header into the response
-        .layer(OtelInResponseLayer::default())
+        // .layer(OtelInResponseLayer::default())
         // start OpenTelemetry trace on incoming request
         // as long as not filtered out!
-        .layer(OtelAxumLayer::default())
-        .layer(
-            tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
-                .with_meter(opentelemetry::global::meter(env!("CARGO_CRATE_NAME")))
-                .build()
-                .expect("Failed to build otel metrics layer"),
-        )
+        // .layer(OtelAxumLayer::default())
+        // .layer(
+        //     tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
+        //         .with_meter(opentelemetry::global::meter(env!("CARGO_CRATE_NAME")))
+        //         .build()
+        //         .expect("Failed to build otel metrics layer"),
+        // )
         .layer(
             CompressionLayer::new()
                 .br(true)
@@ -363,8 +305,18 @@ pub fn router(app_state: AppState) -> Router {
 
 #[tokio::main]
 async fn main() {
+    let build_info = build_info::BuildInfo::get_buildinfo();
+    println!("{}", build_info);
+
+    // XXX: move this into a similar info module.
+    let runtime = tokio::runtime::Handle::current();
+    let num_threads = runtime.metrics().num_workers();
+    println!("Number of threads: {}\n", num_threads);
+
     let env = std::env::vars().collect::<std::collections::HashMap<_, _>>();
     let config = config::Config::from_env(&env).expect("Failed to load config");
+
+    println!("{:#?}", config);
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
@@ -399,23 +351,33 @@ async fn main() {
         Arc::new(auth)
     };
 
-    let uploads = Arc::new(
-        uploads::Uploads::new(db_pool.clone(), PathBuf::from("./cache"))
+    let uploads = async {
+        let uploads = uploads::Uploads::builder()
+            .db_pool(db_pool.clone())
+            .cache_directory(config.upload.cache_directory)
+            .max_allowed_cache_size(config.upload.max_cache_size_bytes)
+            .max_allowed_file_size(config.upload.max_file_size_bytes)
+            .min_time_to_live(config.upload.min_file_time_to_live)
+            .max_time_to_live(config.upload.max_file_time_to_live)
+            .bookkeeping_interval(config.upload.book_keeping_interval)
+            .build()
             .await
-            .expect("Failed to create uploads manager"),
-    );
+            .expect("Failed to create uploads manager");
+
+        Arc::new(uploads)
+    }
+    .await;
 
     let templates = Arc::new(template::Templates::new());
 
     let app_state = AppState {
-        db_pool,
         github_keys,
         uploads,
         templates,
         url_base: config.server.domain,
     };
 
-    let app = router(app_state);
+    let app = router(app_state.clone());
 
     let listener =
         tokio::net::TcpListener::bind(format!("{}:{}", config.server.host, config.server.port))
@@ -426,16 +388,77 @@ async fn main() {
         "Listening on {}",
         listener.local_addr().expect("Failed to bind to port")
     );
+
+    #[allow(clippy::redundant_pub_crate, reason = "false positive in macro")]
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("Failed to listen for ctrl-c");
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("Failed to listen for SIGTERM");
+            let mut sigint =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+                    .expect("Failed to listen for SIGINT");
+
+            tokio::select! {
+                _ = sigint.recv() => {},
+                _ = sigterm.recv() => {},
+            }
         })
         .await
         .expect("Failed to start server");
 
-    // TODO: wait for everything to close...
+    // Attempt to gracefully shutdown all subcomponents on the server.
+    let AppState {
+        github_keys,
+        uploads,
+        templates: _,
+        url_base: _,
+    } = app_state;
+
+    // Both should have 1 strong reference left, so we can safely drop them here.
+    tracing::info!("Getting strong ref to github_keys and uploads");
+    let (github_keys, uploads) = {
+        const MAX_TIME_TO_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+        let now = std::time::Instant::now();
+        loop {
+            if Arc::strong_count(&github_keys) == 1 && Arc::strong_count(&uploads) == 1 {
+                let github_keys =
+                    Arc::try_unwrap(github_keys).expect("Failed to unwrap github_keys");
+                let uploads = Arc::try_unwrap(uploads).expect("Failed to unwrap uploads");
+                break (github_keys, uploads);
+            }
+            tracing::debug!("Waiting for github_keys and uploads to be dropped");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if now.elapsed() > MAX_TIME_TO_WAIT {
+                panic!("Failed to unwrap github_keys and uploads in time");
+            }
+        }
+    };
+
+    tracing::info!("Shutting down subcomponents");
+    tokio::try_join!(
+        github_keys.gracefully_shutdown(),
+        uploads.gracefully_shutdown()
+    )
+    .expect("Failed to gracefully shutdown subcomponents");
+
+    // Flush the database connection and close it gracefully.
+    tracing::info!("Shutting down database connection");
+    db_pool.close().await;
+
+    // Count the number of active threads left on the tokio runtime.
+    let runtime = tokio::runtime::Handle::current();
+    let now = std::time::Instant::now();
+    while runtime.metrics().num_alive_tasks() > 0 {
+        tracing::debug!(
+            num_tasks = runtime.metrics().num_alive_tasks(),
+            time_elapsed = ?now.elapsed(),
+            "Waiting for all tasks to finish");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if now.elapsed() > std::time::Duration::from_secs(5) {
+            panic!("Failed to wait for all tasks to finish in time");
+        }
+    }
 
     tracing::info!("Server shutdown");
 }

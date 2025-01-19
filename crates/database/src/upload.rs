@@ -118,7 +118,7 @@ impl Upload {
             }
 
             // Do a very basic check to ensure the key is alphanumeric.
-            if !x.chars().all(|c| c.is_ascii_alphanumeric()) {
+            if !x.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
                 return Err(DatabaseError::UrlUnsafe(x));
             }
 
@@ -418,7 +418,7 @@ impl Upload {
     /// # tokio_test::block_on(async {
     ///  let pool = SqlitePool::connect("sqlite::memory:").await?;
     /// # migrate(&pool).await?;
-    /// # let new_upload = Upload::builder()
+    /// # let mut new_upload = Upload::builder()
     /// #     .upload_key("12345678".to_string()).expect("upload_key too long")
     /// #     .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     /// #     .file_name("file_name".to_string()).expect("file_name too long")

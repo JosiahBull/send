@@ -15,7 +15,7 @@ const GEN_ALPHABET: [char; 22] = [
 /// It must also be longer than the GEN_ALPHABET.
 const CHECK_ALPHABET: [char; 23] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'h', 'i', 'j', 'k', 'm', 'n', 'o', 'p', 'r', 's', 't', 'w', 'x',
-    'y', '3', '4', '=',
+    'y', '3', '4', '-',
 ];
 
 /// A lookup table for the check alphabet. This converts the check character as usize back

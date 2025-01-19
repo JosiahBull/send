@@ -24,7 +24,7 @@ pub enum ServerError {
     #[error("Missing environment variable: {0}")]
     MissingEnvVar(&'static str),
     #[error("Invalid environment variable: {0}: {1}, failed due to: {2}")]
-    InvalidEnvVar(&'static str, String, #[source] anyhow::Error),
+    InvalidEnvVar(&'static str, String, String),
 
     // Auth
     #[error("Unauthorized")]
@@ -42,6 +42,8 @@ pub enum ServerError {
     InvalidFileName,
     #[error("Exceeded maximum allowed size of integer")]
     OverflowError,
+    #[error("Upload expired")]
+    UploadExpired,
 
     // Wrapped errors
     #[error(transparent)]
@@ -64,12 +66,6 @@ pub enum ServerError {
     TokioJoinError(#[from] tokio::task::JoinError),
 }
 
-impl From<anyhow::Error> for ServerError {
-    fn from(error: anyhow::Error) -> Self {
-        Self::Internal(error.to_string())
-    }
-}
-
 impl ServerError {
     /// Get the name of a variant as a string, used for snapshots. Only used for testing.
     /// Should match name of the enum variant exactly, otherwise it's a bug.
@@ -88,6 +84,7 @@ impl ServerError {
             Self::FileTooBig => "FileTooBig",
             Self::InvalidFileName => "InvalidFileName",
             Self::OverflowError => "OverflowError",
+            Self::UploadExpired => "UploadExpired",
             Self::ChonoOutOfRange(_) => "ChronoOutOfRange",
             Self::SqlxError(_) => "SqlxError",
             Self::TokioIoError(_) => "TokioIoError",
@@ -111,9 +108,10 @@ impl ServerError {
             Self::MutlipartError { .. } => axum::http::StatusCode::BAD_REQUEST,
             Self::ParseError(_) => axum::http::StatusCode::BAD_REQUEST,
             Self::InvalidExpiry { .. } => axum::http::StatusCode::BAD_REQUEST,
-            Self::FileTooBig => axum::http::StatusCode::BAD_REQUEST,
+            Self::FileTooBig => axum::http::StatusCode::PAYLOAD_TOO_LARGE,
             Self::InvalidFileName => axum::http::StatusCode::BAD_REQUEST,
             Self::OverflowError => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Self::UploadExpired => axum::http::StatusCode::BAD_REQUEST,
             Self::ChonoOutOfRange(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::SqlxError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::TokioIoError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,

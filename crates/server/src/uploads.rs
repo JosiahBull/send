@@ -1,10 +1,13 @@
 //! Abstracts the file upload/downloads, including check if uploads exist and ensuring we don't
 //! overrun the storage allocated to the service.
 
-use std::{path::PathBuf, sync::atomic::AtomicU64};
+use std::{
+    path::PathBuf,
+    sync::{atomic::AtomicU64, Arc},
+};
 
-use anyhow::Context;
 use async_stream::stream;
+use bon::bon;
 use database::Upload;
 use futures::{Stream, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -15,34 +18,47 @@ use crate::{
     unique_ids::UploadId,
 };
 
-/// The maximum size of a single upload.
-const MAX_ALLOWED_FILE_SIZE: u64 = 1024 * 1024 * 1024 * 10; // 10 GB
-
-/// The total maximum size of all files on disk.
-const MAX_ALLOWED_CACHE_SIZE: u64 = 1024 * 1024 * 1024 * 100; // 200 GB
-
-/// The interval with which to perform bookkeeping tasks.
-const BOOKKEEPING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60); // 1 minute
-
 /// An abstraction for managing the lifetime of file uploads.
 #[derive(Debug)]
 pub struct Uploads {
     /// A persistant link to the database, useful for persisting information about uploads.
     db_pool: sqlx::SqlitePool,
     /// The total size of all files on the disk right now.
-    size_of_files_on_disk: AtomicU64,
+    size_of_files_on_disk: Arc<AtomicU64>,
     /// The location of the cache directory on disk.
     cache_directory: PathBuf,
+    /// The maximum size of a single upload.
+    max_allowed_file_size: u64,
+    /// The total maximum size of all files on disk.
+    max_allowed_cache_size: u64,
+
+    /// The minimum time an upload is allowed to live for.
+    min_time_to_live: std::time::Duration,
+
+    /// The maximum time an upload is allowed to live for.
+    max_time_to_live: std::time::Duration,
 
     /// A handle to the bookkeeping task.
+    #[allow(
+        dead_code,
+        reason = "This is a handle to the task, it is not used directly."
+    )]
     bookkeeping_handle: tokio::task::JoinHandle<()>,
     /// A token to cancel the bookkeeping task.
+    #[allow(
+        dead_code,
+        reason = "This is a token to cancel the task, it is not used directly."
+    )]
     drop_guard: tokio_util::sync::DropGuard,
 }
 
 /// Performs bookkeeping tasks, such as cleaning up expired uploads.
 #[tracing::instrument(skip(db_pool))]
-async fn bookkeeping(db_pool: &sqlx::SqlitePool, cache_directory: &PathBuf) -> ServerResult<()> {
+async fn bookkeeping(
+    db_pool: &sqlx::SqlitePool,
+    cache_directory: &PathBuf,
+    size_of_files_on_disk: Arc<AtomicU64>,
+) -> ServerResult<()> {
     let now = chrono::Utc::now();
     let expiring_uploads = Upload::select_next_expiring(
         db_pool, 0,
@@ -65,6 +81,7 @@ async fn bookkeeping(db_pool: &sqlx::SqlitePool, cache_directory: &PathBuf) -> S
             if tokio::fs::metadata(&file_path).await.is_ok() {
                 tokio::fs::remove_file(&file_path).await?;
             }
+
             Ok(upload)
         });
     }
@@ -79,6 +96,10 @@ async fn bookkeeping(db_pool: &sqlx::SqlitePool, cache_directory: &PathBuf) -> S
             Ok(mut upload) => {
                 upload.file_name_on_disk = None;
                 upload.deleted_at = Some(now);
+                size_of_files_on_disk.fetch_sub(
+                    upload.file_size as u64,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
                 upload.update(db_pool).await?;
             }
             Err(err) => {
@@ -106,6 +127,7 @@ async fn bookkeeping(db_pool: &sqlx::SqlitePool, cache_directory: &PathBuf) -> S
     Ok(())
 }
 
+#[bon]
 impl Uploads {
     /// Creates a new instance of the `Uploads` service.
     ///
@@ -127,7 +149,24 @@ impl Uploads {
     /// # TODO
     /// ```rust
     /// ```
-    pub async fn new(db_pool: sqlx::SqlitePool, cache_directory: PathBuf) -> ServerResult<Self> {
+    #[builder]
+    #[tracing::instrument(skip(db_pool), err)]
+    pub async fn new(
+        /// A connection pool to the database.
+        db_pool: sqlx::SqlitePool,
+        /// The directory where files will be stored.
+        cache_directory: PathBuf,
+        /// The maximum size of a single upload.
+        max_allowed_file_size: u64,
+        /// The total maximum size of all files on disk.
+        max_allowed_cache_size: u64,
+        /// The minimum time an upload is allowed to live for.
+        min_time_to_live: std::time::Duration,
+        /// The maximum time an upload is allowed to live for.
+        max_time_to_live: std::time::Duration,
+        /// The interval with which to perform bookkeeping tasks.
+        bookkeeping_interval: std::time::Duration,
+    ) -> ServerResult<Self> {
         // Read the cache directory and calculate the size of the files in it.
         let mut size_of_files_on_disk = 0_u64;
         let mut entries = tokio::fs::read_dir(&cache_directory).await?;
@@ -137,6 +176,8 @@ impl Uploads {
                 .checked_add(metadata.len())
                 .ok_or(ServerError::OverflowError)?;
         }
+
+        let size_of_files_on_disk = Arc::new(AtomicU64::new(size_of_files_on_disk));
 
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let drop_guard = cancel_token.clone().drop_guard();
@@ -148,11 +189,9 @@ impl Uploads {
             let file_name = file_name.to_string_lossy();
             let file_name = file_name.as_ref();
             let file_name =
-                uuid::Uuid::parse_str(file_name).context("Failed to parse file name")?;
+                uuid::Uuid::parse_str(file_name).expect("Failed to parse file name as UUID");
 
-            let upload = Upload::select_by_file_name_on_disk(&db_pool, file_name)
-                .await
-                .context("Failed to select upload by file name on disk")?;
+            let upload = Upload::select_by_file_name_on_disk(&db_pool, file_name).await?;
 
             if upload.is_none() {
                 tracing::warn!(file_name = %file_name, "Found orphaned file in cache directory, removing");
@@ -163,15 +202,17 @@ impl Uploads {
         let bookkeeping_handle = tokio::spawn({
             let db_pool = db_pool.clone();
             let cache_directory = cache_directory.clone();
+            let size_of_files_on_disk = Arc::clone(&size_of_files_on_disk);
 
             tracing::info!("Starting bookkeeping task");
 
             async move {
                 loop {
                     tokio::select! {
-                        _ = tokio::time::sleep(BOOKKEEPING_INTERVAL) => {
+                        _ = tokio::time::sleep(bookkeeping_interval) => {
+                            let size_of_files_on_disk = Arc::clone(&size_of_files_on_disk);
                             async {
-                                if let Err(err) = bookkeeping(&db_pool, &cache_directory).await {
+                                if let Err(err) = bookkeeping(&db_pool, &cache_directory, size_of_files_on_disk).await {
                                     tracing::error!(error = %err, "Failed to perform bookkeeping");
                                 }
                             }.instrument(tracing::info_span!("bookkeeping")).await;
@@ -188,8 +229,12 @@ impl Uploads {
 
         Ok(Self {
             db_pool,
-            size_of_files_on_disk: AtomicU64::new(size_of_files_on_disk),
+            size_of_files_on_disk,
             cache_directory,
+            max_allowed_file_size,
+            max_allowed_cache_size,
+            min_time_to_live,
+            max_time_to_live,
             bookkeeping_handle,
             drop_guard,
         })
@@ -197,13 +242,17 @@ impl Uploads {
 
     /// Tries to perform a graceful shutdown of the `Uploads` service.
     #[tracing::instrument(skip(self))]
-    pub async fn graceful_shutdown(self) -> ServerResult<()> {
+    pub async fn gracefully_shutdown(self) -> ServerResult<()> {
         let Self {
-            bookkeeping_handle,
-            drop_guard,
             db_pool: _,
             size_of_files_on_disk: _,
             cache_directory: _,
+            max_allowed_file_size: _,
+            max_allowed_cache_size: _,
+            min_time_to_live: _,
+            max_time_to_live: _,
+            bookkeeping_handle,
+            drop_guard,
         } = self;
 
         drop(drop_guard);
@@ -219,16 +268,26 @@ impl Uploads {
     /// Generates the key that this file will be available at, once uploaded.
     ///
     /// Also creates an entry in the database for this upload, to be followed by an 'upload' call later on.
+    #[tracing::instrument(skip(self))]
+    #[builder]
     pub async fn preflight_upload(
         &self,
+
+        /// The username of the user uploading the file.
         uploader_username: String,
+
+        /// The name of the file.
         file_name: String,
+
+        /// The size of the file.
         file_size: i64,
-        expiry: tokio::time::Duration,
+
+        /// How long the file should be stored for.
+        expiry: std::time::Duration,
     ) -> ServerResult<UploadId> {
         let upload_id = UploadId::generate::<8>();
 
-        if file_size < 0 || file_size > MAX_ALLOWED_FILE_SIZE as i64 {
+        if file_size < 0 || file_size > self.max_allowed_file_size as i64 {
             return Err(ServerError::FileTooBig);
         }
 
@@ -236,16 +295,10 @@ impl Uploads {
             return Err(ServerError::InvalidFileName);
         }
 
-        /// The minimum time a client is allowed to request their upload to live for.
-        const MIN_EXPIRY: std::time::Duration = std::time::Duration::from_secs(60 * 5); // 5 minutes
-
-        /// The maximum time a client is allowed to request their upload to live for.
-        const MAX_EXPIRY: std::time::Duration = std::time::Duration::from_secs(60 * 60 * 24 * 7); // 1 week
-
-        if expiry < MIN_EXPIRY || expiry > MAX_EXPIRY {
+        if expiry < self.min_time_to_live || expiry > self.max_time_to_live {
             return Err(ServerError::InvalidExpiry {
-                min: MIN_EXPIRY,
-                max: MAX_EXPIRY,
+                min: self.min_time_to_live,
+                max: self.max_time_to_live,
             });
         }
 
@@ -267,19 +320,38 @@ impl Uploads {
     }
 
     /// Uploads a file to the given key.
-    pub async fn upload<T: Stream<Item = anyhow::Result<Vec<u8>>> + std::marker::Unpin>(
+    #[tracing::instrument(skip(self, upload_stream), fields(
+        upload_id = %key,
+        size_of_files_on_disk = %self.size_of_files_on_disk.load(std::sync::atomic::Ordering::Relaxed),
+        max_allowed_cache_size = %self.max_allowed_cache_size,
+        upload_size = upload_size,
+    ), err)]
+    pub async fn upload<T>(
         &self,
         key: UploadId,
-        mut upload_stream: T,
-    ) -> anyhow::Result<()> {
-        // TODO: improve error responses here.
+        upload_size: u64,
+        upload_stream: T,
+    ) -> ServerResult<()>
+    where
+        T: Stream<Item = ServerResult<axum::body::Bytes>> + Unpin + Send,
+    {
+        // Do some basic checks based on the reported maximum file size.
+        // NOTE: we check the ACTUAL size of the bytes being written to the disk too, in case of malicious clients.
+        if upload_size > self.max_allowed_file_size {
+            return Err(ServerError::FileTooBig);
+        }
+        if self
+            .size_of_files_on_disk
+            .load(std::sync::atomic::Ordering::Relaxed)
+            .saturating_add(upload_size)
+            > self.max_allowed_cache_size
+        {
+            return Err(ServerError::FileTooBig);
+        }
+
         let mut upload = Upload::select_by_upload_key(&self.db_pool, key)
             .await?
-            .context("Upload not found")?;
-
-        if upload.file_name_on_disk.is_some() {
-            return Err(anyhow::anyhow!("File already uploaded"));
-        }
+            .ok_or(ServerError::NotFound)?;
 
         if upload.expires_at < chrono::Utc::now()
             || upload
@@ -287,76 +359,111 @@ impl Uploads {
                 .checked_add_signed(chrono::Duration::seconds(60 * 5))
                 .expect("Failed to add 5 minutes to the creation time")
                 < chrono::Utc::now()
+            || upload.file_name_on_disk.is_some()
         {
-            return Err(anyhow::anyhow!("Upload expired"));
+            tracing::warn!(
+                upload_id = %upload.upload_key,
+                expires_at = %upload.expires_at,
+                created_at = %upload.created_at,
+                file_name_on_disk = ?upload.file_name_on_disk,
+                "Upload expired or already uploaded"
+            );
+            return Err(ServerError::UploadExpired);
         }
 
         let file_name = uuid::Uuid::new_v4();
         upload.file_name_on_disk = Some(file_name);
-        upload
-            .update(&self.db_pool)
-            .await
-            .context("Failed to update upload")?;
+        upload.update(&self.db_pool).await?;
 
         let file_path = self.cache_directory.join(file_name.to_string());
+        let file = tokio::fs::File::create(&file_path).await?;
 
-        let mut file = tokio::fs::File::create(&file_path)
-            .await
-            .context("Failed to create file")?;
+        async fn handle_stream<T>(
+            mut file: tokio::fs::File,
+            mut upload_stream: T,
+            size_of_files_on_disk: Arc<AtomicU64>,
+            max_allowed_cache_size: u64,
+            max_allowed_file_size: u64,
+        ) -> Result<u64, (ServerError, T)>
+        where
+            T: Stream<Item = ServerResult<axum::body::Bytes>> + Unpin,
+        {
+            let mut bytes_written_so_far: u64 = 0;
+            while let Some(chunk) = upload_stream.next().await {
+                match chunk {
+                    Ok(chunk) => {
+                        // Ensure we haven't exceeded max size for an individual file.
+                        bytes_written_so_far = bytes_written_so_far
+                            .checked_add(chunk.len() as u64)
+                            .expect("Overflow error");
+                        if bytes_written_so_far > max_allowed_file_size {
+                            return Err((ServerError::FileTooBig, upload_stream));
+                        }
 
-        let size_of_files_on_disk = self
-            .size_of_files_on_disk
-            .load(std::sync::atomic::Ordering::Relaxed);
-        let mut bytes_written_so_far = 0;
+                        // Ensure we haven't exceeded the total cache size.
+                        let size_of_files_on_disk = size_of_files_on_disk
+                            .fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                        if size_of_files_on_disk
+                            .checked_add(chunk.len() as u64)
+                            .expect("Overflow error")
+                            > max_allowed_cache_size
+                        {
+                            return Err((ServerError::FileTooBig, upload_stream));
+                        }
 
-        macro_rules! cleanup_file {
-            () => {
-                // Try to cleanup the file if we can.
-                let _ = tokio::fs::remove_file(&file_path).await;
-                upload.file_name_on_disk = None;
-                upload
-                    .update(&self.db_pool)
-                    .await
-                    .context("Failed to update upload")?;
-            };
-        }
-        while let Some(chunk) = upload_stream.next().await {
-            match chunk {
-                Ok(chunk) => {
-                    bytes_written_so_far += chunk.len() as u64;
-                    if bytes_written_so_far > MAX_ALLOWED_FILE_SIZE {
-                        cleanup_file!();
-                        return Err(anyhow::anyhow!("File too large"));
+                        if let Err(e) = file.write_all(&chunk).await {
+                            return Err((e.into(), upload_stream));
+                        }
                     }
-                    if bytes_written_so_far + size_of_files_on_disk > MAX_ALLOWED_CACHE_SIZE {
-                        cleanup_file!();
-                        return Err(anyhow::anyhow!("Cache too large"));
+                    Err(err) => {
+                        return Err((err, upload_stream));
                     }
-                    file.write_all(&chunk)
-                        .await
-                        .context("Failed to write to file")?;
-                }
-                Err(err) => {
-                    cleanup_file!();
-                    return Err(err);
                 }
             }
+
+            Ok(bytes_written_so_far)
         }
 
-        let new_disk_size = self
-            .size_of_files_on_disk
-            .fetch_add(bytes_written_so_far, std::sync::atomic::Ordering::Relaxed);
-        if new_disk_size > MAX_ALLOWED_CACHE_SIZE {
-            cleanup_file!();
-            return Err(anyhow::anyhow!("Cache too large"));
-        }
+        match handle_stream(
+            file,
+            upload_stream,
+            Arc::clone(&self.size_of_files_on_disk),
+            self.max_allowed_cache_size,
+            self.max_allowed_file_size,
+        )
+        .await
+        {
+            Ok(len) => {
+                upload.file_size = len as i64;
+                upload.uploaded_at = Some(chrono::Utc::now());
+                upload.update(&self.db_pool).await?;
+            }
+            #[cfg_attr(
+                not(test),
+                allow(
+                    unused_variables,
+                    unused_mut,
+                    reason = "We don't need to handle this in tests"
+                )
+            )]
+            Err((err, mut stream)) => {
+                // Try to remove the file if we can.
+                if let Err(e) = tokio::fs::remove_file(&file_path).await {
+                    tracing::error!("Failed to remove file: {:?}", e);
+                }
+                upload.file_name_on_disk = None;
+                upload.update(&self.db_pool).await?;
 
-        upload.file_size = bytes_written_so_far as i64;
-        upload.uploaded_at = Some(chrono::Utc::now());
-        upload
-            .update(&self.db_pool)
-            .await
-            .context("Failed to update upload")?;
+                // Drain any remaining bytes from the stream.
+                // NOTE: this is required to get a consistent test result by avoiding any "broken pipe" errors.
+                // #[cfg(test)]
+                // {
+                while (stream.next().await).is_some() {}
+                // }
+
+                return Err(err);
+            }
+        }
 
         Ok(())
     }
@@ -390,7 +497,7 @@ impl Uploads {
     pub async fn download(
         &self,
         key: UploadId,
-    ) -> ServerResult<(Upload, impl Stream<Item = anyhow::Result<Vec<u8>>>)> {
+    ) -> ServerResult<(Upload, impl Stream<Item = ServerResult<Vec<u8>>>)> {
         let upload = self.info(key).await?;
 
         if upload.uploaded_at.is_none() {
@@ -408,14 +515,14 @@ impl Uploads {
 
         let stream = stream! {
             let mut file = file;
-            let mut buffer = [0; 64 * 1024];
+            let mut buffer = [0; 4 * 1024]; // Configurable buffer size
+            #[allow(clippy::indexing_slicing, reason = "file.read should return the number of bytes read")]
             loop {
-                let bytes_read = file.read(&mut buffer).await
-                    .context("Failed to read from file")?;
+                let bytes_read = file.read(&mut buffer).await?;
                 if bytes_read == 0 {
                     break;
                 }
-                yield Ok(buffer.get(..bytes_read).unwrap_or(&[]).to_vec());
+                yield Ok(buffer[..bytes_read].to_vec());
             }
         };
 

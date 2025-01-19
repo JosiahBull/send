@@ -15,7 +15,16 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     zlib1g-dev \
     ca-certificates \
-    git
+    git \
+    nano \
+    software-properties-common
+
+# HACK: thefuck doesn't support python 3.12 yet, so we forcibly downgrade to python 3.11
+# Forcibly downgrade to python 3.11
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get update && apt-get install -y python3.11 python3.11-dev python3.11-distutils
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+# END HACK
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -23,12 +32,13 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup toolchain install nightly
 
 # Install cargo-mutants, cargo-udeps, cargo-expand, cargo-audit
-RUN cargo +nightly install cargo-udeps
-RUN cargo install cargo-tarpaulin
-RUN cargo install cargo-mutants
-RUN cargo install cargo-expand
-RUN cargo install cargo-audit
-RUN cargo install sqlx-cli
+RUN cargo +nightly install --locked cargo-udeps
+RUN cargo install --locked cargo-tarpaulin
+RUN cargo install --locked cargo-mutants
+RUN cargo install --locked cargo-expand
+RUN cargo install --locked cargo-audit
+RUN cargo install --locked sqlx-cli
+RUN cargo install --locked cargo-insta
 
 # Install python + python packages that I use for normal development
 RUN apt-get install -y python3 python3-pip

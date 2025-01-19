@@ -1,6 +1,5 @@
 ---
 source: crates/server/src/error.rs
 expression: status_code
-snapshot_kind: text
 ---
-400 Bad Request
+413 Payload Too Large

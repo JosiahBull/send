@@ -1,0 +1,6 @@
+---
+source: crates/server/tests/regression_tests.rs
+expression: download.text().await.unwrap()
+snapshot_kind: text
+---
+Upload not found

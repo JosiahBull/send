@@ -14,7 +14,7 @@ database.workspace = true
 # TODO: sort dependencies
 # TODO: prune dependencies
 
-axum = { workspace = true, features = ["json", "multipart", "macros"] }
+axum = { workspace = true, features = ["json", "multipart", "macros", "http2"] }
 chrono = { workspace = true, features = ["serde"] }
 
 reqwest = { workspace = true, features = [
@@ -22,6 +22,10 @@ reqwest = { workspace = true, features = [
     "http2",
     "json",
     "rustls-tls",
+
+    # XXX: Only needed for testing!
+    "multipart",
+    "stream"
 ] }
 
 sqlx = { workspace = true, features = [
@@ -61,7 +65,6 @@ tower-http = { workspace = true, features = [
     "trace",
 ] }
 humantime = { workspace = true }
-humansize = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true, features = [
     "serialize",
@@ -90,6 +93,17 @@ insta = { workspace = true }
 tracing-test = { workspace = true }
 httpmock = { workspace = true }
 mutants = { workspace = true }
+indexmap = { workspace = true }
+tempfile = { workspace = true }
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+regex = { workspace = true }
+libc = "0.2.169"
+rstest = "0.24.0"
+
+[build-dependencies]
+vergen = { workspace = true, features = ["build", "cargo", "rustc", "si"] }
+vergen-gitcl = { workspace = true }
 
 [lints]
 workspace = true
