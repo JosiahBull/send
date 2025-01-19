@@ -18,7 +18,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
 
-use crate::error::ServerError;
+use crate::error::{ServerError, ServerResult};
 
 /// The length of the nonce in bytes.
 const NONCE_LENGTH: usize = 32;
@@ -347,7 +347,7 @@ impl GithubKeys {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub async fn gracefully_shutdown(self) -> anyhow::Result<()> {
+    pub async fn gracefully_shutdown(self) -> ServerResult<()> {
         let Self {
             drop_guard,
             handle_keys,
@@ -364,14 +364,18 @@ impl GithubKeys {
                 err = (&e as &dyn std::error::Error),
                 "Failed to join key refresh task"
             );
-            anyhow::bail!("Failed to join key refresh task");
+            return Err(ServerError::Internal(
+                "Failed to join key refresh task".to_string(),
+            ));
         }
         if let Err(e) = tokio::time::timeout(ABSOLUTE_TIMEOUT, handle_tokens).await {
             tracing::error!(
                 err = (&e as &dyn std::error::Error),
                 "Failed to join token expiration task"
             );
-            anyhow::bail!("Failed to join token expiration task");
+            return Err(ServerError::Internal(
+                "Failed to join token expiration task".to_string(),
+            ));
         }
 
         Ok(())
@@ -496,10 +500,16 @@ mod tests {
                 .header("Content-Type", "text/plain");
         });
 
-        let keys = GithubKeys::new(vec![KeySource {
-            url: Url::parse(&server.url("/testuser.keys")).expect("The url to be parsable"),
-            username: "testuser".to_string(),
-        }]);
+        let keys = GithubKeys::builder()
+            .nonce_time_to_live(Duration::from_secs(10))
+            .key_refresh_interval(Duration::from_secs(10))
+            .max_time_allowed_since_refresh(Duration::from_secs(10))
+            .max_number_of_keys(10)
+            .sources_to_check(vec![KeySource {
+                url: Url::parse(&server.url("/testuser.keys")).expect("to be valid url"),
+                username: "testuser".to_string(),
+            }])
+            .build();
 
         // Wait 1 second
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -586,10 +596,16 @@ mod tests {
                 .header("Content-Type", "text/plain");
         });
 
-        let keys = GithubKeys::new(vec![KeySource {
-            url: Url::parse(&server.url("/testuser.keys")).expect("to be valid url"),
-            username: "testuser".to_string(),
-        }]);
+        let keys = GithubKeys::builder()
+            .nonce_time_to_live(Duration::from_secs(10))
+            .key_refresh_interval(Duration::from_secs(10))
+            .max_time_allowed_since_refresh(Duration::from_secs(10))
+            .max_number_of_keys(10)
+            .sources_to_check(vec![KeySource {
+                url: Url::parse(&server.url("/testuser.keys")).expect("to be valid url"),
+                username: "testuser".to_string(),
+            }])
+            .build();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         mock.assert_hits(1);
@@ -669,17 +685,30 @@ mod tests {
     #[test]
     #[should_panic = "No sources to check for keys"]
     fn test_starting_with_empty_sources_panics() {
-        GithubKeys::new(Vec::new());
+        GithubKeys::builder()
+            .nonce_time_to_live(Duration::from_secs(10))
+            .key_refresh_interval(Duration::from_secs(10))
+            .max_time_allowed_since_refresh(Duration::from_secs(10))
+            .max_number_of_keys(10)
+            // XXX: this could be validated in the builder
+            .sources_to_check(vec![])
+            .build();
     }
 
     #[test]
     #[should_panic = "Source does not end in .keys: https://github.com/josiahbull"]
     fn test_that_invalid_urls_panic() {
-        GithubKeys::new(vec![KeySource {
-            url: "https://github.com/josiahbull"
-                .parse()
-                .expect("The url to be valid"),
-            username: "josiahbull".to_string(),
-        }]);
+        GithubKeys::builder()
+            .nonce_time_to_live(Duration::from_secs(10))
+            .key_refresh_interval(Duration::from_secs(10))
+            .max_time_allowed_since_refresh(Duration::from_secs(10))
+            .max_number_of_keys(10)
+            .sources_to_check(vec![KeySource {
+                url: "https://github.com/josiahbull"
+                    .parse()
+                    .expect("The url to be valid"),
+                username: "josiahbull".to_string(),
+            }])
+            .build();
     }
 }

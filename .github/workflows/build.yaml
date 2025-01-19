@@ -23,12 +23,28 @@ jobs:
       matrix:
         platform: [
           linux/amd64,
-          # linux/arm64 # Build for ARM64 isn't native yet.
+          linux/arm64
         ]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        run: |
+          docker buildx create --use
+
+      - name: Print Versions
+        run: |
+          echo "Docker Version:"
+          docker --version
+
+      - name: Create the image name
+        id: imageName
+        run: |
+          IMAGE_NAME="${{ env.REGISTRY }}/${{ github.repository }}"
+          IMAGE_NAME=$(echo "$IMAGE_NAME" | awk '{print tolower($0)}')
+          echo "::set-output name=IMAGE_NAME::$IMAGE_NAME"
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -41,21 +57,33 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.imageName.outputs.IMAGE_NAME }}
 
-      - name: Build and push Docker image
+      - name: Build image
+        id: build
+        run: |
+          docker buildx build \
+            --platform ${{ matrix.platform }} \
+            --file Dockerfile \
+            --tag ${{ steps.imageName.outputs.IMAGE_NAME }} \
+            --load \
+            .
+
+      - name: Push Docker image
         id: push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: ${{ matrix.platform }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker push ${{ steps.imageName.outputs.IMAGE_NAME }}
+
+      - name: Get Image Digest
+        id: digest
+        run: |
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ steps.imageName.outputs.IMAGE_NAME }} | cut -d '@' -f 2)
+          echo "::set-output name=digest::${DIGEST}"
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-name: ${{ steps.imageName.outputs.IMAGE_NAME }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

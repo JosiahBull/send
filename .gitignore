@@ -8,3 +8,5 @@ mutants*/
 test_auth.sh
 .DS_Store
 lcov.info
+data/
+.env

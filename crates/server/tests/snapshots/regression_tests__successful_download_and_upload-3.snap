@@ -1,0 +1,6 @@
+---
+source: crates/server/tests/regression_tests.rs
+expression: download
+snapshot_kind: text
+---
+Hello, world 123!
