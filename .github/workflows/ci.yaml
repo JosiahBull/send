@@ -28,11 +28,11 @@ jobs:
     # Setup Rust
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
       - name: Show Cargo and rustc version
         run: |
           cargo --version
@@ -51,6 +51,9 @@ jobs:
       # Use cargo tree, and fail if openssl is present
       - name: Check openssl
         run: cargo tree | grep openssl && exit 1 || exit 0
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
 
       - run: cargo mutants -vV --in-place
       - uses: actions/upload-artifact@v4
