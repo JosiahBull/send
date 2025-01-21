@@ -9,15 +9,15 @@
   ],
   "major": {
     "automerge": true,
-    "stabilityDays": 90
+    "minimumReleaseAge": "90 days"
   },
   "packageRules": [
     {
       "automerge": true,
-      "matchPackagePatterns": [
-        "^0\\."
-      ],
-      "stabilityDays": 90
+      "minimumReleaseAge": "90 days",
+      "matchPackageNames": [
+        "/^0\\./"
+      ]
     }
   ],
   "pre-commit": {
