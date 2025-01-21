@@ -36,7 +36,7 @@ use unique_ids::UploadId;
 pub struct AppState {
     /// AUthentication service which relies on ssh keys.
     github_keys: Arc<auth::GithubKeys>,
-    /// Upload manager for abstracing file uploads/downloads.
+    /// Upload manager for abstracting file uploads/downloads.
     uploads: Arc<uploads::Uploads>,
     /// A templating engine for server-side rendering.
     templates: Arc<template::Templates>,

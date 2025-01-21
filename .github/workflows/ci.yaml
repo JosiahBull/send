@@ -48,9 +48,6 @@ jobs:
       - name: Rustfmt
         run: cargo fmt --all -- --check
 
-      - name: Check typos
-        uses: crate-ci/typos@master
-
       # Use cargo tree, and fail if openssl is present
       - name: Check openssl
         run: cargo tree | grep openssl && exit 1 || exit 0

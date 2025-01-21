@@ -105,7 +105,7 @@ where
         reason: format!("Failed to read field: '{}' because of {:?}", field_name, e),
     })?;
     value.parse().map_err(|e| ServerError::BadRequest {
-        reason: format!("Failed to parse field: '{}' becuase of {:?}", field_name, e),
+        reason: format!("Failed to parse field: '{}' because of {:?}", field_name, e),
     })
 }
 

@@ -83,7 +83,7 @@ opentelemetry-appender-tracing = { workspace = true }
 tower-otel-http-metrics = { workspace = true, features = ["axum"] }
 itertools = { workspace = true }
 bon = { workspace = true }
-reqwest-tracing = { version="0.5.5",  features = ["opentelemetry_0_27"] }
+reqwest-tracing = { workspace = true, features = ["opentelemetry_0_27"] }
 
 [dev-dependencies]
 insta = { workspace = true }
@@ -95,8 +95,8 @@ tempfile = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
 regex = { workspace = true }
-libc = "0.2.169"
-rstest = "0.24.0"
+libc = { workspace = true }
+rstest = { workspace = true }
 
 [build-dependencies]
 vergen = { workspace = true, features = ["build", "cargo", "rustc", "si"] }

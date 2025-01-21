@@ -19,7 +19,7 @@ use crate::DatabaseError;
 /// # Errors
 ///
 /// If the migration fails, a [`DatabaseError::MigrateError`] will be returned, this typically
-/// indicates a problem with the database connection or the transation as written, and should only
+/// indicates a problem with the database connection or the transaction as written, and should only
 /// occur if an outside force has interfered with the migration process or database tables.
 pub async fn migrate<'a, S>(db_pool: S) -> Result<(), DatabaseError>
 where
