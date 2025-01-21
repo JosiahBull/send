@@ -12,10 +12,14 @@ help_text="Usage: upload.sh [--expiry <expiry>] [--rename-file <rename-file>] --
 # Parse the command line arguments
 expiry="6h"
 rename_file=""
-key="$SEND_SSH_KEY" # default to the env var if possible
 file_to_upload=""
-domain="$SEND_DOMAIN" # default to the env var if possible
 do_install=""
+
+# default to the env var if possible
+set +o nounset
+key="$SEND_SSH_KEY"
+domain="$SEND_DOMAIN"
+set -o nounset
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -121,23 +125,28 @@ fi
 
 # try to convert the expiry to seconds
 expiry_secs=0
-if [[ $expiry =~ ^[0-9]+[smhd]$ ]]; then
+if [[ $expiry =~ ^[0-9]+[smhd]?$ ]]; then
     unit=${expiry: -1}
-    value=${expiry:0:${#expiry}-1}
-    case $unit in
-        s)
-            expiry_secs=$value
-            ;;
-        m)
-            expiry_secs=$((value * 60))
-            ;;
-        h)
-            expiry_secs=$((value * 60 * 60))
-            ;;
-        d)
-            expiry_secs=$((value * 60 * 60 * 24))
-            ;;
-    esac
+    if [[ $unit =~ [0-9] ]]; then
+        value=$expiry
+        expiry_secs=$value
+    else
+        value=${expiry:0:${#expiry}-1}
+        case $unit in
+            s)
+                expiry_secs=$value
+                ;;
+            m)
+                expiry_secs=$((value * 60))
+                ;;
+            h)
+                expiry_secs=$((value * 60 * 60))
+                ;;
+            d)
+                expiry_secs=$((value * 60 * 60 * 24))
+                ;;
+        esac
+    fi
 fi
 
 if [ $expiry_secs -eq 0 ]; then
@@ -146,11 +155,11 @@ if [ $expiry_secs -eq 0 ]; then
 fi
 
 # Get the nonce from the server
-nonce=$(curl -s -X GET http://$domain/api/v1/nonce)
+nonce=$(curl -s -X GET $domain/api/v1/nonce)
 nonce=$(echo -n $nonce | sed 's/^"\(.*\)"$/\1/')
 
 # Generate the signature using our private key
-signature=$(echo -n $nonce | base64 -d | ssh-keygen -Y sign -n file -f $key - | tr -d '\n')
+signature=$(echo -n $nonce | base64 -d | ssh-keygen -Y sign -n file -f $key 2>/dev/null | tr -d '\n')
 
 # Encode the response as a JSON object
 json="{\"nonce\":\"$nonce\",\"signature\":\"$signature\"}"
@@ -158,17 +167,24 @@ json="{\"nonce\":\"$nonce\",\"signature\":\"$signature\"}"
 # Encode into base64
 json=$(echo -n $json | base64)
 
+# Determine the file size in a cross-platform way
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    file_size=$(stat -f%z "$file_to_upload")
+else
+    file_size=$(stat -c%s "$file_to_upload")
+fi
+
 # Send the request with the signature
 response=$(curl -s \
     -w "%{http_code}" \
     --header "Authorization: SshSig $json" \
     --header "Content-Type: multipart/form-data" \
     -F "file_name=$rename_file" \
-    -F "file_size=$(stat -c %s $file_to_upload)" \
+    -F "file_size=$file_size" \
     -F "expiry_secs=$expiry" \
     -F "file=@$file_to_upload" \
     -X POST \
-    http://$domain/api/v1/upload
+    $domain/api/v1/upload
 )
 http_code=${response: -3}
 response=${response:0:${#response}-3}
@@ -189,7 +205,7 @@ fi
 
 # strip the leading and trailing " from the response
 response=$(echo $response | sed 's/^"\(.*\)"$/\1/')
-url="http://$domain/$response"
+url="$domain/$response"
 
 echo "$url"
 
