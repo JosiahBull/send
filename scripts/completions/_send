@@ -1,0 +1,34 @@
+#compdef upload.sh
+
+_upload_completions() {
+  local cur option
+
+  cur="${words[$CURRENT]}"
+
+  if [[ "$cur" == "" ]]; then
+    compadd --key --domain --expiry --rename-file
+    return
+  fi
+
+  case "$cur" in
+    "--key")
+      compadd -- "$SEND_SSH_KEY"
+      ;;
+    "--domain")
+      compadd -- "$SEND_DOMAIN"
+      ;;
+    "--expiry")
+      compadd -- s m h d
+      ;;
+    "--rename-file")
+      _files
+      ;;
+    "--file-to-upload")
+      _files
+      ;;
+    *)
+      ;;
+  esac
+}
+
+_upload_completions "$@"

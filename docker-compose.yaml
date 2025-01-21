@@ -13,9 +13,6 @@ services:
 
   telemetry:
     image: grafana/otel-lgtm:0.8.0
-    depends_on:
-      db:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "cat", "/tmp/ready"]
       timeout: 30s
@@ -30,10 +27,5 @@ services:
       - "4318:4318"
       - "3000:3000"
     volumes:
-      - ./telemetry-config/tempo-config.yaml:/otel-lgtm/tempo-config.yaml
-      - ./telemetry-config/otelcon-config.yaml:/otel-lgtm/otelcol-config.yaml
-      - ./telemetry-config/grafana-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/grafana-dashboards.yaml
-      - ./telemetry-config/dashboards:/otel-lgtm/dashboards
-      - ./telemetry-config/alerts:/otel-lgtm/grafana/conf/provisioning/alerting
       # Required for docker stats
       - /var/run/docker.sock:/var/run/docker.sock
