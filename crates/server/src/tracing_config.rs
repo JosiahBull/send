@@ -47,12 +47,12 @@ fn init_logger_provider() -> ServerResult<opentelemetry_sdk::logs::LoggerProvide
 }
 
 /// Initialize the tracing layer.
-pub fn init_tracing() -> (opentelemetry_sdk::metrics::SdkMeterProvider, opentelemetry_sdk::trace::TracerProvider){
+pub fn init_tracing() {
     opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
     // Metrics
     let meter_provider = init_meter_provider().expect("Failed to create meter provider");
-    let opentelemetry_metrics_layer = tracing_opentelemetry::MetricsLayer::new(meter_provider.clone());
+    let opentelemetry_metrics_layer = tracing_opentelemetry::MetricsLayer::new(meter_provider);
 
     // Tracing
     // Uses OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
@@ -122,12 +122,12 @@ pub fn init_tracing() -> (opentelemetry_sdk::metrics::SdkMeterProvider, opentele
 
     // Build the subscriber by combining layers
     let subscriber = tracing_subscriber::Registry::default()
-        .with(
-            console_subscriber::ConsoleLayer::builder()
-                .with_default_env()
-                .server_addr(([0, 0, 0, 0], 6669))
-                .spawn(),
-        )
+        // .with(
+        //     console_subscriber::ConsoleLayer::builder()
+        //         .with_default_env()
+        //         .server_addr(([0, 0, 0, 0], 6669))
+        //         .spawn(),
+        // )
         .with(otel_log_layer)
         .with(opentelemetry_metrics_layer)
         .with(tracing_opentelemetry_layer)
@@ -135,6 +135,4 @@ pub fn init_tracing() -> (opentelemetry_sdk::metrics::SdkMeterProvider, opentele
 
     // Set the subscriber as the global default
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
-
-    (meter_provider, tracer_provider)
 }

@@ -44,6 +44,8 @@ pub enum ServerError {
     OverflowError,
     #[error("Upload expired")]
     UploadExpired,
+    #[error("Invalid upload id: {reason}")]
+    InvalidUploadId { reason: String },
 
     // Wrapped errors
     #[error(transparent)]
@@ -89,6 +91,7 @@ impl ServerError {
             Self::InvalidFileName => "InvalidFileName",
             Self::OverflowError => "OverflowError",
             Self::UploadExpired => "UploadExpired",
+            Self::InvalidUploadId { .. } => "InvalidUploadId",
             Self::ChonoOutOfRange(_) => "ChronoOutOfRange",
             Self::SqlxError(_) => "SqlxError",
             Self::TokioIoError(_) => "TokioIoError",
@@ -118,6 +121,7 @@ impl ServerError {
             Self::InvalidFileName => axum::http::StatusCode::BAD_REQUEST,
             Self::OverflowError => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::UploadExpired => axum::http::StatusCode::BAD_REQUEST,
+            Self::InvalidUploadId { .. } => axum::http::StatusCode::BAD_REQUEST,
             Self::ChonoOutOfRange(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::SqlxError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::TokioIoError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,

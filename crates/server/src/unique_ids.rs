@@ -4,6 +4,8 @@
 use itertools::Itertools;
 use rand::Rng;
 
+use crate::error::{ServerError, ServerResult};
+
 /// The alphabet used to generate upload IDs.
 const GEN_ALPHABET: [char; 22] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'h', 'i', 'j', 'k', 'm', 'n', 'o', 'p', 'r', 's', 't', 'w', 'x',
@@ -84,7 +86,7 @@ impl AsRef<str> for UploadId {
 }
 
 impl TryFrom<String> for UploadId {
-    type Error = anyhow::Error;
+    type Error = ServerError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::try_decode(value)
@@ -293,7 +295,7 @@ impl UploadId {
     ///
     /// This function returns an error if the input string contains invalid characters or has an
     /// incorrect check-bit.
-    pub fn try_decode(input: String) -> anyhow::Result<Self> {
+    pub fn try_decode(input: String) -> ServerResult<Self> {
         let maybe_valid = input
             .to_lowercase()
             .chars()
@@ -312,16 +314,18 @@ impl UploadId {
             .replace("vv", "w");
 
         // Ensure the len is > 1
-        anyhow::ensure!(
-            maybe_valid.len() > 2,
-            "UploadId length must be greater than 2"
-        );
+        if maybe_valid.len() < 2 {
+            return Err(ServerError::InvalidUploadId {
+                reason: "UploadId length must be greater than 2".to_string(),
+            });
+        }
 
         // If any invalid characters are present, return an error.
-        anyhow::ensure!(
-            maybe_valid.chars().all(|c| CHECK_ALPHABET.contains(&c)),
-            "Invalid UploadId characters"
-        );
+        if maybe_valid.chars().any(|c| !CHECK_ALPHABET.contains(&c)) {
+            return Err(ServerError::InvalidUploadId {
+                reason: "Invalid characters".to_string(),
+            });
+        }
 
         // Grab the last character as the check-bit.
         let (id, check_char) = maybe_valid.split_at(
@@ -350,10 +354,11 @@ impl UploadId {
             "expt_check_char_idx is guarenteed to be within bounds of check alphabet becuase it has been modded by the length of the alphabet.",
         );
 
-        anyhow::ensure!(
-            check_char == expected_check_char.to_string(),
-            "Invalid UploadId check-bit",
-        );
+        if check_char != expected_check_char.to_string() {
+            return Err(ServerError::InvalidUploadId {
+                reason: "Invalid check-bit".to_string(),
+            });
+        }
 
         Ok(Self(maybe_valid))
     }
@@ -450,7 +455,7 @@ mod tests {
         let result = UploadId::try_from(id);
         assert!(result.is_err());
         let err = result.expect_err("Should fail due to invalid characters");
-        assert_eq!(err.to_string(), "Invalid UploadId characters");
+        assert_eq!(err.to_string(), "Invalid upload id: Invalid characters");
     }
 
     #[test]
@@ -459,6 +464,6 @@ mod tests {
         let result = UploadId::try_from(invalid_id);
         assert!(result.is_err());
         let err = result.expect_err("Should fail due to invalid check-bit");
-        assert_eq!(err.to_string(), "Invalid UploadId check-bit");
+        assert_eq!(err.to_string(), "Invalid upload id: Invalid check-bit");
     }
 }

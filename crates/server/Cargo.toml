@@ -54,7 +54,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio-util = { workspace = true }
 ssh-key = { workspace = true, features = ["crypto"] }
-anyhow = { workspace = true }
 futures = { workspace = true }
 async-stream = { workspace = true }
 handlebars = { workspace = true }
@@ -81,7 +80,6 @@ tracing-opentelemetry-instrumentation-sdk = { workspace = true, features = [
     "tracing_level_info",
 ] }
 opentelemetry-appender-tracing = { workspace = true }
-console-subscriber = { workspace = true }
 tower-otel-http-metrics = { workspace = true, features = ["axum"] }
 itertools = { workspace = true }
 bon = { workspace = true }
