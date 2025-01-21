@@ -3,6 +3,7 @@
     clippy::unwrap_used,
     clippy::impl_trait_in_params,
     clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
     reason = "This is an integration test."
 )]
 
@@ -91,6 +92,7 @@ impl Drop for ServerInstance {
             );
         }
         assert!(!stderr.contains("panic"), "Server panicked");
+        assert!(!stderr.contains("panicked"), "Server errored");
     }
 }
 
@@ -149,7 +151,15 @@ async fn started_server(
 ) {
     let mut cmd = std::process::Command::cargo_bin(COMMAND_NAME).unwrap();
     cmd.env_clear()
+        // Rust directives
         .env("RUST_LOG", "DEBUG")
+
+        // OTEL directives
+        .env("OTEL_SERVICE_NAME", "backend")
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://telemetry.orb.local:4317")
+        .env("TRACE_SAMPLE_PROBABILITY", "1.0")
+
+        // Server directives
         .env("SERVER__HOST", "127.0.0.1")
         .env("SERVER__PORT", free_port.to_string())
         .env("SERVER__DOMAIN", "http://127.0.0.1:3000")
@@ -195,7 +205,7 @@ async fn started_server(
             if n == 0 {
                 break;
             }
-            stdout.push_str(std::str::from_utf8(&buffer[..n]).unwrap());
+            stdout.push_str(String::from_utf8_lossy(&buffer[..n]).as_ref());
             if stdout.len() > 10_000_000 {
                 // remove the first 1_000_000 characters
                 stdout = stdout.split_off(1_000_000);
@@ -212,7 +222,7 @@ async fn started_server(
             if n == 0 {
                 break;
             }
-            stderr.push_str(std::str::from_utf8(&buffer[..n]).unwrap());
+            stderr.push_str(String::from_utf8_lossy(&buffer[..n]).as_ref());
             if stderr.len() > 10_000_000 {
                 // remove the first 1_000_000 characters
                 stderr = stderr.split_off(1_000_000);
@@ -220,6 +230,8 @@ async fn started_server(
         }
         stderr
     });
+
+    let server_instance = ServerInstance::new(handle, stderr_handle, stdout_handle);
 
     // Wait for the server to start up by periodically pinging the /health endpoint.
     const MAX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -245,7 +257,7 @@ async fn started_server(
         mock_keys_server.2,
         temp_dir,
         free_port,
-        ServerInstance::new(handle, stderr_handle, stdout_handle),
+        server_instance,
     )
 }
 
@@ -486,39 +498,72 @@ async fn test_that_large_files_get_rejected(
 ) {
     let (private_key, _, free_port, started_server) = server_with_keys_initalised;
 
-    // Get a nonce
-    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
-        .await
-        .unwrap();
-
-    let binding = response.text().await.unwrap();
-    let signed_nonce = sign_and_encode_nonce(&binding, &private_key);
-
     // Create a large test file to upload
     let test_file = tempfile::NamedTempFile::new().unwrap();
     let large_content = vec![0_u8; 2 * 1024 * 1024]; // 2 MB file
     std::fs::write(test_file.path(), &large_content).unwrap();
 
     // Attempt to upload the large file
-    let response = reqwest::Client::new()
-        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
-        .header("Authorization", format!("SshSig {}", signed_nonce))
-        .multipart(
-            reqwest::multipart::Form::new()
-                .text("file_name", "large_file.txt")
-                .text("file_size", large_content.len().to_string())
-                .text("expiry_secs", "5")
-                .file("file", test_file.path())
+    // NOTE: the way hyper handles an early response from an upload is not perfect, and often
+    // results in broken pipe errors on the clientside. I could not find a way to address this, so
+    // adding retries makes this test much more reliable.
+    const MAX_RETRIES: usize = 10;
+    let mut num_retries = 0;
+    let response = {
+        loop {
+            // Get a nonce
+            let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
                 .await
-                .unwrap(),
-        )
-        .send()
-        .await
-        .unwrap();
+                .unwrap();
 
-    assert_eq!(response.status(), 413);
-    insta::assert_snapshot!(response.text().await.unwrap());
+            let binding = response.text().await.unwrap();
+            let signed_nonce = sign_and_encode_nonce(&binding, &private_key);
 
+            let response = reqwest::Client::new()
+                .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+                .header("Authorization", format!("SshSig {}", signed_nonce))
+                .multipart(
+                    reqwest::multipart::Form::new()
+                        .text("file_name", "large_file.txt")
+                        // Lie about file size!
+                        .text("file_size", "1")
+                        .text("expiry_secs", "5")
+                        .file("file", test_file.path())
+                        .await
+                        .unwrap(),
+                )
+                .send()
+                .await;
+
+            match response {
+                Ok(response) => {
+                    break response;
+                }
+                Err(e) => {
+                    num_retries += 1;
+                    eprintln!(
+                        "Failed to upload file, retrying... Attempt: {}/{}",
+                        num_retries, MAX_RETRIES
+                    );
+                    eprintln!("Got error: {}", e);
+                    if num_retries >= MAX_RETRIES {
+                        panic!("Failed to upload file after {} retries", MAX_RETRIES);
+                    }
+                }
+            }
+        }
+    };
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if status != 413 {
+        panic!(
+            "Expected a 413 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    insta::assert_snapshot!(body);
     started_server.disarm();
 }
 
@@ -557,7 +602,7 @@ async fn test_that_many_files_cannot_exceed_max_size(
                 reqwest::multipart::Form::new()
                     .text("file_name", "large_file.txt")
                     // Lie about file size
-                    .text("file_size", "0")
+                    .text("file_size", "1")
                     .text("expiry_secs", "60")
                     .file("file", test_file.path())
                     .await
@@ -598,7 +643,7 @@ async fn test_that_many_files_cannot_exceed_max_size(
             reqwest::multipart::Form::new()
                 .text("file_name", "small_file.txt")
                 // Lie about file size
-                .text("file_size", "0")
+                .text("file_size", "1")
                 .text("expiry_secs", "30")
                 .file("file", test_file.path())
                 .await
@@ -621,25 +666,507 @@ async fn test_that_many_files_cannot_exceed_max_size(
     started_server.disarm();
 }
 
-// #[rstest]
-// #[awt]
-// #[timeout(std::time::Duration::from_secs(30))]
-// #[tokio::test]
-// async fn test_that_invalid_auth_fails(
-//     #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
-// ) {
-//     todo!()
-// }
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_that_invalid_signing_key_fails(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (_, _, free_port, started_server) = server_with_keys_initalised;
 
-// #[rstest]
-// #[awt]
-// #[timeout(std::time::Duration::from_secs(30))]
-// #[tokio::test]
-// async fn test_length_must_be_accurate(
-//     #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
-// ) {
-//     todo!()
-// }
+    // Get a nonce
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let binding = response.text().await.unwrap();
+    let signed_nonce = sign_and_encode_nonce(
+        &binding,
+        &PrivateKey::new(
+            KeypairData::Ed25519(Ed25519Keypair::from_seed(&[1; 32])),
+            "a static test key",
+        )
+        .unwrap(),
+    );
+
+    // Create a test file to upload
+    let test_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(test_file.path(), "Hello, world 123!").unwrap();
+
+    // Upload the file
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .header("Authorization", format!("SshSig {}", signed_nonce))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "17")
+                .text("expiry_secs", "5")
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if status != 403 {
+        panic!(
+            "Expected a 403 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    insta::assert_snapshot!(body);
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_that_missing_auth_fails(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (_, _, free_port, started_server) = server_with_keys_initalised;
+
+    // Get a nonce
+    let _ = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    // Create a test file to upload
+    let test_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(test_file.path(), "Hello, world 123!").unwrap();
+
+    // Upload the file
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "17")
+                .text("expiry_secs", "5")
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if status != 400 {
+        panic!(
+            "Expected a 400 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    insta::assert_snapshot!(body);
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_downloading_non_existant_file(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (_, _, free_port, started_server) = server_with_keys_initalised;
+
+    // Attempt to download a non-existent file
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/non_existent_file", free_port))
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if status != 400 {
+        panic!(
+            "Expected a 400 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+    insta::assert_snapshot!(body);
+
+    // Attempt to download a non-existant file with a valid id
+
+    // Try downloading the page
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/w33rwptc", free_port))
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if status != 404 {
+        panic!(
+            "Expected a 404 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    // Try downloading the file
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/w33rwptc/file", free_port))
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if status != 404 {
+        panic!(
+            "Expected a 404 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_downloading_expired_file(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (private_key, temp_dir, free_port, started_server) = server_with_keys_initalised;
+
+    // Get a nonce
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let binding = response.text().await.unwrap();
+    let signed_nonce = sign_and_encode_nonce(&binding, &private_key);
+
+    // Create a test file to upload
+    let test_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(test_file.path(), "Hello, world 123!").unwrap();
+
+    // Upload the file
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .header("Authorization", format!("SshSig {}", signed_nonce))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "17")
+                .text("expiry_secs", "5")
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if !status.is_success() {
+        panic!("Failed to upload file: {}", body);
+    }
+
+    // Ensure the file is a valid download
+    let download = reqwest::get(&format!(
+        "http://127.0.0.1:{}/{}",
+        free_port,
+        body.trim_matches('"')
+    ))
+    .await
+    .unwrap();
+
+    let download = download.text().await.unwrap();
+    insta::assert_snapshot!(sanitise_snapshot(download));
+
+    // Wait for 5 + 5 + 1 second (5 seconds for the file to expire, 5 seconds for the book keeping interval, and 1 second for the server to process the expiry)
+    tokio::time::sleep(std::time::Duration::from_secs(11)).await;
+
+    // Ensure the file has been deleted.
+    let files = std::fs::read_dir(temp_dir.path()).unwrap();
+    assert!(files.count() == 0);
+
+    // Ensure that anyone attempting to download the file now gets a 404
+    let download = reqwest::get(&format!(
+        "http://127.0.0.1:{}/{}/file",
+        free_port,
+        body.trim_matches('"')
+    ))
+    .await
+    .unwrap();
+
+    assert_eq!(download.status(), 404);
+    insta::assert_snapshot!(download.text().await.unwrap());
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_uploading_multiple_times(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (private_key, _, free_port, started_server) = server_with_keys_initalised;
+
+    // Get a nonce
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let binding = response.text().await.unwrap();
+    let signed_nonce = sign_and_encode_nonce(&binding, &private_key);
+
+    // Create a test file to upload
+    let test_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(test_file.path(), "Hello, world 123!").unwrap();
+
+    // Upload the file
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .header("Authorization", format!("SshSig {}", signed_nonce))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "17")
+                .text("expiry_secs", "5")
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if !status.is_success() {
+        panic!("Failed to upload file: {}", body);
+    }
+
+    // Upload the file again
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .header("Authorization", format!("SshSig {}", signed_nonce))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "17")
+                .text("expiry_secs", "5")
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if status != 403 {
+        panic!(
+            "Expected a 403 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    insta::assert_snapshot!(body);
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_downloading_multiple_times(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (private_key, _, free_port, started_server) = server_with_keys_initalised;
+
+    // Get a nonce
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let binding = response.text().await.unwrap();
+    let signed_nonce = sign_and_encode_nonce(&binding, &private_key);
+
+    // Create a test file to upload
+    let test_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(test_file.path(), "Hello, world 123!").unwrap();
+
+    // Upload the file
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .header("Authorization", format!("SshSig {}", signed_nonce))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "17")
+                .text("expiry_secs", "5")
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if !status.is_success() {
+        panic!("Failed to upload file: {}", body);
+    }
+
+    // Download the file multiple times
+    for _ in 0..5 {
+        let download = reqwest::get(&format!(
+            "http://127.0.0.1:{}/{}",
+            free_port,
+            body.trim_matches('"')
+        ))
+        .await
+        .unwrap();
+
+        let download = download.text().await.unwrap();
+        insta::assert_snapshot!(sanitise_snapshot(download));
+
+        // Download the actual file
+        let download = reqwest::get(&format!(
+            "http://127.0.0.1:{}/{}/file",
+            free_port,
+            body.trim_matches('"')
+        ))
+        .await
+        .unwrap();
+
+        let status = download.status();
+        let download = download.text().await.unwrap();
+        if !status.is_success() {
+            panic!("Failed to download file: {}", download);
+        }
+
+        insta::assert_snapshot!(download);
+    }
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_uploading_file_with_zero_bytes_len(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (private_key, _, free_port, started_server) = server_with_keys_initalised;
+
+    // Get a nonce
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let binding = response.text().await.unwrap();
+    let signed_nonce = sign_and_encode_nonce(&binding, &private_key);
+
+    // Create a test file to upload
+    let test_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(test_file.path(), "").unwrap();
+
+    // Upload the file
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .header("Authorization", format!("SshSig {}", signed_nonce))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "1") // Claim to be uploading a 1 byte file
+                .text("expiry_secs", "5")
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+
+    if status != 400 {
+        panic!(
+            "Expected a 400 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    insta::assert_snapshot!(body);
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_setting_expiry_too_high_fails(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (private_key, _, free_port, started_server) = server_with_keys_initalised;
+
+    // Get a nonce
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let binding = response.text().await.unwrap();
+    let signed_nonce = sign_and_encode_nonce(&binding, &private_key);
+
+    // Create a test file to upload
+    let test_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(test_file.path(), "Hello, world 123!").unwrap();
+
+    // Upload the file
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/api/v1/upload", free_port))
+        .header("Authorization", format!("SshSig {}", signed_nonce))
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("file_name", "hello.txt")
+                .text("file_size", "17")
+                .text("expiry_secs", ((60 * 60 * 24) + 1).to_string()) // 1 day + 1 second
+                .file("file", test_file.path())
+                .await
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+
+    if status != 400 {
+        panic!(
+            "Expected a 400 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    insta::assert_snapshot!(body);
+
+    started_server.disarm();
+}
+
 
 /// In download.hbs we link to some static files hosted by someone else. these must always be live -
 /// otherwise we want to fail the test suite so we know to update the files.

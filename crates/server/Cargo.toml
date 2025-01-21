@@ -72,7 +72,6 @@ opentelemetry-otlp = { workspace = true, features = [
 ] }
 opentelemetry_sdk = { workspace = true, features = [
     "trace",
-    "opentelemetry-http",
     "rt-tokio",
 ] }
 tracing-opentelemetry = { workspace = true, features = ["async-trait"] }
@@ -81,12 +80,12 @@ axum-tracing-opentelemetry = { workspace = true }
 tracing-opentelemetry-instrumentation-sdk = { workspace = true, features = [
     "tracing_level_info",
 ] }
-opentelemetry-http = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
 console-subscriber = { workspace = true }
 tower-otel-http-metrics = { workspace = true, features = ["axum"] }
 itertools = { workspace = true }
 bon = { workspace = true }
+reqwest-tracing = { version="0.5.5",  features = ["opentelemetry_0_27"] }
 
 [dev-dependencies]
 insta = { workspace = true }

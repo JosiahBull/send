@@ -1,0 +1,5 @@
+---
+source: crates/server/tests/regression_tests.rs
+expression: body
+---
+Bad request: Uploaded file must have at least 1 byte.

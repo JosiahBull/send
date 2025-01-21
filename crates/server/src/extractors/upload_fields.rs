@@ -1,6 +1,6 @@
 //! Extractors for fields from a multipart request.
 
-use std::time::Duration;
+use std::{num::NonZeroU64, time::Duration};
 
 use axum::{
     async_trait,
@@ -15,7 +15,7 @@ pub struct UploadFields {
     /// Name of the file.
     pub file_name: String,
     /// Size of the file.
-    pub file_size: u64,
+    pub file_size: NonZeroU64,
     /// How long the file should be stored for.
     pub expiry: Duration,
     /// The multipart for any further extraction
@@ -39,9 +39,9 @@ where
 
         let (file_name, file_size, expiry) = {
             let file_name: String = parse_field(&mut multipart, "file_name").await?;
-            let file_size: u64 = parse_field(&mut multipart, "file_size").await?;
-            let expiry_secs: u64 = parse_field(&mut multipart, "expiry_secs").await?;
-            let expiry = std::time::Duration::from_secs(expiry_secs);
+            let file_size: NonZeroU64 = parse_field(&mut multipart, "file_size").await?;
+            let expiry_secs: NonZeroU64 = parse_field(&mut multipart, "expiry_secs").await?;
+            let expiry = std::time::Duration::from_secs(expiry_secs.into());
 
             (file_name, file_size, expiry)
         };
@@ -210,7 +210,7 @@ mod tests {
 
         let upload_fields = result.unwrap();
         assert_eq!(upload_fields.file_name, "test_file.txt");
-        assert_eq!(upload_fields.file_size, 1024);
+        assert_eq!(upload_fields.file_size, NonZeroU64::new(1024).expect("Non-zero"));
         assert_eq!(upload_fields.expiry, Duration::from_secs(3600));
     }
 

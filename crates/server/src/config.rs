@@ -1,6 +1,6 @@
 //! Handles configuration for the server, typically pulling from structured environment variables.
 
-use std::{collections::HashMap, net::Ipv4Addr, path::PathBuf};
+use std::{collections::HashMap, net::Ipv4Addr, num::NonZeroU64, path::PathBuf};
 
 use url::Url;
 
@@ -191,9 +191,9 @@ pub struct UploadConfig {
     /// The directory to store files in.
     pub cache_directory: PathBuf,
     /// The maximum size of the uploads directory before we reject new uploads.
-    pub max_cache_size_bytes: u64,
+    pub max_cache_size_bytes: NonZeroU64,
     /// The maximum size of any individual file before we reject it.
-    pub max_file_size_bytes: u64,
+    pub max_file_size_bytes: NonZeroU64,
     /// How often to perform book keeping and cleanup expired files.
     pub book_keeping_interval: std::time::Duration,
     /// The minimum time a file must live in the cache.
@@ -401,6 +401,10 @@ impl AuthConfig {
         let mut index = 0_usize;
 
         loop {
+            if index > 10_000 {
+                panic!("Too many AUTH__AUTH_KEYS__* entries");
+            }
+
             let username_key = format!("AUTH__AUTH_KEYS__{}__USERNAME", index);
             let url_key = format!("AUTH__AUTH_KEYS__{}__URL", index);
 
@@ -418,19 +422,16 @@ impl AuthConfig {
 
             auth_keys.insert(url, username.to_string());
             index = index.saturating_add(1);
-            if index > 10_000 {
-                panic!("Too many AUTH__AUTH_KEYS__* entries");
-            }
         }
 
         // All of the keys should end in .keys and be valid URLs with a scheme and no trailing slash.
         if auth_keys
             .iter()
-            .any(|(url, _)| url.scheme().is_empty() || url.cannot_be_a_base())
+            .any(|(url, _)| !["http", "https"].contains(&url.scheme()))
         {
             let first_failed_key = auth_keys
                 .iter()
-                .find(|(url, _)| url.scheme().is_empty() || url.cannot_be_a_base())
+                .find(|(url, _)| !["http", "https"].contains(&url.scheme()))
                 .expect("already checked to be present");
 
             return Err(ServerError::InvalidEnvVar(
@@ -466,7 +467,7 @@ impl AuthConfig {
 /// let size = parse_size("10MB").expect("Failed to parse size");
 /// assert_eq!(size, 10 * 1024 * 1024);
 /// ```
-fn parse_size(size_str: &str, variable_name: &'static str) -> ServerResult<u64> {
+fn parse_size(size_str: &str, variable_name: &'static str) -> ServerResult<NonZeroU64> {
     let (value, unit) = size_str.trim().split_at(
         size_str
             .find(|c: char| !c.is_ascii_digit() && c != '.')
@@ -481,7 +482,7 @@ fn parse_size(size_str: &str, variable_name: &'static str) -> ServerResult<u64> 
     let value: u64 = value.parse::<u64>().map_err(|e| {
         ServerError::InvalidEnvVar(variable_name, size_str.to_string(), e.to_string())
     })?;
-    match unit.to_uppercase().as_str() {
+    let parsed = match unit.to_uppercase().as_str() {
         "" | "B" => Ok(value),
         "K" | "KB" => Ok(value.checked_mul(1024).expect("Size overflow")),
         "M" | "MB" => Ok(value.checked_mul(1024 * 1024).expect("Size overflow")),
@@ -493,7 +494,18 @@ fn parse_size(size_str: &str, variable_name: &'static str) -> ServerResult<u64> 
             size_str.to_string(),
             format!("Unsupported unit: {}", got),
         )),
-    }
+    }?;
+
+    NonZeroU64::new(parsed).map_or_else(
+        || {
+            Err(ServerError::InvalidEnvVar(
+                variable_name,
+                size_str.to_string(),
+                "Size must be non-zero".to_string(),
+            ))
+        },
+        Ok,
+    )
 }
 
 /// Parses a time string with units (e.g., `1h`, `30m`, `300s`) into a Duration.
@@ -545,34 +557,34 @@ fn parse_time(time_str: &str, variable_name: &'static str) -> ServerResult<std::
 }
 
 #[cfg(test)]
-mod tests {
-    use std::net::Ipv4Addr;
-    use std::path::PathBuf;
-    use std::time::Duration;
-
+mod test_server_config {
     use super::*;
 
-    #[test]
-    fn test_server_config_from_env() {
+    fn base_valid_env() -> HashMap<String, String> {
         let mut env = HashMap::new();
         env.insert("SERVER__HOST".to_string(), "127.0.0.1".to_string());
         env.insert("SERVER__PORT".to_string(), "8080".to_string());
         env.insert("SERVER__DOMAIN".to_string(), "http://owo.com".to_string());
+        env
+    }
 
-        let server_config = ServerConfig::from_env(&env).expect("Failed to load ServerConfig");
-        assert_eq!(server_config.host, Ipv4Addr::new(127, 0, 0, 1));
-        assert_eq!(server_config.port, 8080);
+    #[test]
+    fn test_server_config_from_env() {
+        let env = base_valid_env();
+        let ServerConfig { host, port, domain } =
+            ServerConfig::from_env(&env).expect("Failed to load ServerConfig");
+        assert_eq!(host, Ipv4Addr::new(127, 0, 0, 1));
+        assert_eq!(port, 8080);
         assert_eq!(
-            server_config.domain,
+            domain,
             Url::parse("http://owo.com").expect("Failed to parse URL")
         );
     }
 
     #[test]
     fn test_invalid_server_host() {
-        let mut env = HashMap::new();
+        let mut env = base_valid_env();
         env.insert("SERVER__HOST".to_string(), "invalid_host".to_string());
-        env.insert("SERVER__PORT".to_string(), "8080".to_string());
 
         let err = ServerConfig::from_env(&env);
 
@@ -585,8 +597,7 @@ mod tests {
 
     #[test]
     fn test_invalid_server_port() {
-        let mut env = HashMap::new();
-        env.insert("SERVER__HOST".to_string(), "127.0.0.1".to_string());
+        let mut env = base_valid_env();
         env.insert("SERVER__PORT".to_string(), "invalid_port".to_string());
 
         let err = ServerConfig::from_env(&env);
@@ -597,25 +608,36 @@ mod tests {
             "Invalid environment variable: SERVER__PORT: invalid_port, failed due to: invalid digit found in string"
         );
     }
+}
 
-    #[test]
-    fn test_database_config_from_env() {
+#[cfg(test)]
+mod test_database_config {
+    use super::*;
+
+    fn base_valid_env() -> HashMap<String, String> {
         let mut env = HashMap::new();
         env.insert(
             "DATABASE__URL".to_string(),
             "postgres://user:password@localhost/dbname".to_string(),
         );
-
-        let database_config =
-            DatabaseConfig::from_env(&env).expect("Failed to load DatabaseConfig");
-        assert_eq!(
-            database_config.url,
-            "postgres://user:password@localhost/dbname"
-        );
+        env
     }
 
     #[test]
-    fn test_upload_config_from_env() {
+    fn test_database_config_from_env() {
+        let env = base_valid_env();
+
+        let DatabaseConfig { url } =
+            DatabaseConfig::from_env(&env).expect("Failed to load DatabaseConfig");
+        assert_eq!(url, "postgres://user:password@localhost/dbname");
+    }
+}
+
+#[cfg(test)]
+mod test_upload_config {
+    use super::*;
+
+    fn base_valid_env() -> HashMap<String, String> {
         let mut env = HashMap::new();
         env.insert(
             "UPLOAD__CACHE_DIRECTORY".to_string(),
@@ -633,79 +655,68 @@ mod tests {
         );
         env.insert(
             "UPLOAD__MAX_FILE_TIME_TO_LIVE".to_string(),
-            "1h".to_string(),
+            "2h".to_string(),
         );
+        env
+    }
 
-        let upload_config = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
-        assert_eq!(upload_config.cache_directory, PathBuf::from("/tmp/uploads"));
-        assert_eq!(upload_config.max_cache_size_bytes, 10 * 1024 * 1024);
+    #[test]
+    fn test_upload_config_from_env() {
+        let env = base_valid_env();
+        let UploadConfig {
+            cache_directory,
+            max_cache_size_bytes,
+            max_file_size_bytes,
+            book_keeping_interval,
+            min_file_time_to_live,
+            max_file_time_to_live,
+        } = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
+
+        assert_eq!(cache_directory, PathBuf::from("/tmp/uploads"));
         assert_eq!(
-            upload_config.max_file_time_to_live,
+            max_cache_size_bytes,
+            NonZeroU64::new(10 * 1024 * 1024).expect("Failed to create NonZeroU64")
+        );
+        assert_eq!(
+            min_file_time_to_live,
+            std::time::Duration::from_secs(30 * 60)
+        );
+        assert_eq!(
+            max_file_time_to_live,
+            std::time::Duration::from_secs(2 * 60 * 60)
+        );
+        assert_eq!(
+            book_keeping_interval,
             std::time::Duration::from_secs(60 * 60)
         );
         assert_eq!(
-            upload_config.book_keeping_interval,
-            std::time::Duration::from_secs(60 * 60)
+            max_file_size_bytes,
+            NonZeroU64::new(1024 * 1024).expect("Failed to create NonZeroU64")
         );
-        assert_eq!(upload_config.max_file_size_bytes, 1024 * 1024);
     }
 
     #[test]
     fn test_upload_size_units() {
-        let mut env = HashMap::new();
-        env.insert(
-            "UPLOAD__CACHE_DIRECTORY".to_string(),
-            "/tmp/uploads".to_string(),
-        );
+        let mut env = base_valid_env();
         env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "1GB".to_string());
-        env.insert("UPLOAD__MAX_FILE_SIZE".to_string(), "1GB".to_string());
-        env.insert(
-            "UPLOAD__BOOK_KEEPING_INTERVAL".to_string(),
-            "1h".to_string(),
-        );
-        env.insert(
-            "UPLOAD__MIN_FILE_TIME_TO_LIVE".to_string(),
-            "30m".to_string(),
-        );
-        env.insert(
-            "UPLOAD__MAX_FILE_TIME_TO_LIVE".to_string(),
-            "1h".to_string(),
-        );
         let upload_config = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
-        assert_eq!(upload_config.max_cache_size_bytes, 1024 * 1024 * 1024);
-        assert_eq!(upload_config.max_file_size_bytes, 1024 * 1024 * 1024);
         assert_eq!(
-            upload_config.min_file_time_to_live,
-            Duration::from_secs(30 * 60)
-        );
-        assert_eq!(
-            upload_config.max_file_time_to_live,
-            Duration::from_secs(60 * 60)
+            upload_config.max_cache_size_bytes,
+            NonZeroU64::new(1024 * 1024 * 1024).expect("Failed to create NonZeroU64")
         );
 
         env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "500KB".to_string());
         let upload_config = UploadConfig::from_env(&env).expect("Failed to load UploadConfig");
-        assert_eq!(upload_config.max_cache_size_bytes, 500 * 1024);
+        assert_eq!(
+            upload_config.max_cache_size_bytes,
+            NonZeroU64::new(500 * 1024).expect("Failed to create NonZeroU64")
+        );
     }
 
     #[test]
     fn test_invalid_upload_size() {
-        let mut env = HashMap::new();
-        env.insert(
-            "UPLOAD__CACHE_DIRECTORY".to_string(),
-            "/tmp/uploads".to_string(),
-        );
+        let mut env = base_valid_env();
         env.insert("UPLOAD__MAX_CACHE_SIZE".to_string(), "1.5GB".to_string());
-        env.insert("UPLOAD__MAX_FILE_SIZE".to_string(), "1GB".to_string());
-        env.insert(
-            "UPLOAD__BOOK_KEEPING_INTERVAL".to_string(),
-            "1h".to_string(),
-        );
-        env.insert(
-            "UPLOAD__MAX_FILE_TIME_TO_LIVE".to_string(),
-            "1h".to_string(),
-        );
-
         let err = UploadConfig::from_env(&env);
 
         assert!(err.is_err());
@@ -714,9 +725,45 @@ mod tests {
             "Invalid environment variable: UPLOAD__MAX_CACHE_SIZE: 1.5GB, failed due to: invalid digit found in string"
         );
     }
+}
 
-    #[test]
-    fn test_auth_config_from_env() {
+#[cfg(test)]
+mod test_auth_config {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[allow(clippy::arithmetic_side_effects, reason = "tests can panic")]
+    fn insert_auth_keys(env: &mut HashMap<String, String>, username: &str, url: &str) {
+        // Find the max existing key using a binary search, in the search space 0 -> 100k
+        let mut low = 0;
+        let mut high = 100_000;
+
+        // if the high key exists already - panic
+        if env.contains_key(&format!("AUTH__AUTH_KEYS__{}__USERNAME", high - 1)) {
+            panic!("Too many AUTH__AUTH_KEYS__* entries");
+        }
+
+        while low < high {
+            let mid = low + (high - low) / 2;
+            let key = format!("AUTH__AUTH_KEYS__{}__USERNAME", mid);
+            if env.contains_key(&key) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+
+        let index = low;
+
+        env.insert(
+            format!("AUTH__AUTH_KEYS__{}__USERNAME", index),
+            username.to_string(),
+        );
+        env.insert(format!("AUTH__AUTH_KEYS__{}__URL", index), url.to_string());
+    }
+
+    fn base_valid_env() -> HashMap<String, String> {
         let mut env = HashMap::new();
         env.insert(
             "AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(),
@@ -731,31 +778,39 @@ mod tests {
             "AUTH__MAX_TIME_ALLOWED_SINCE_REFRESH".to_string(),
             "1h".to_string(),
         );
-        let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
-        assert_eq!(auth_config.nonce_max_time_to_live, Duration::from_secs(100));
+        insert_auth_keys(&mut env, "username0", "http://example.com/user0.keys");
+        env
+    }
 
-        env.insert("AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(), "5m".to_string());
-        let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
-        assert_eq!(auth_config.nonce_max_time_to_live, Duration::from_secs(300));
+    #[test]
+    fn test_auth_config_from_env() {
+        let env = base_valid_env();
+        let AuthConfig {
+            nonce_max_time_to_live,
+            key_refresh_interval,
+            max_number_of_keys_per_user,
+            max_time_allowed_since_refresh,
+            auth_keys,
+        } = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
 
-        env.insert("AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(), "1h".to_string());
-        let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
+        assert_eq!(nonce_max_time_to_live, Duration::from_secs(100));
+        assert_eq!(key_refresh_interval, Duration::from_secs(60));
+        assert_eq!(max_number_of_keys_per_user, 5);
+        assert_eq!(max_time_allowed_since_refresh, Duration::from_secs(60 * 60));
         assert_eq!(
-            auth_config.nonce_max_time_to_live,
-            Duration::from_secs(3600)
-        );
-
-        env.insert("AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(), "1d".to_string());
-        let auth_config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
-        assert_eq!(
-            auth_config.nonce_max_time_to_live,
-            Duration::from_secs(86400)
+            auth_keys,
+            vec![(
+                Url::parse("http://example.com/user0.keys").expect("Failed to parse URL"),
+                "username0".to_string()
+            )]
+            .into_iter()
+            .collect()
         );
     }
 
     #[test]
     fn test_invalid_auth_nonce_time() {
-        let mut env = HashMap::new();
+        let mut env = base_valid_env();
         env.insert(
             "AUTH__NONCE_MAX_TIME_TO_LIVE".to_string(),
             "1.5h".to_string(),
@@ -767,6 +822,67 @@ mod tests {
         assert_eq!(
             err.expect_err("Should fail due to float value").to_string(),
             "Invalid environment variable: AUTH__NONCE_MAX_TIME_TO_LIVE: 1.5h, failed due to: invalid digit found in string"
+        );
+    }
+
+    #[test]
+    fn test_auth_config_max_number_of_keys() {
+        let mut env = base_valid_env();
+        for i in 1..10_000 {
+            // one already present
+            insert_auth_keys(
+                &mut env,
+                &format!("username{}", i),
+                &format!("http://example.com/user{}.keys", i),
+            );
+        }
+
+        let config = AuthConfig::from_env(&env).expect("Failed to load AuthConfig");
+
+        assert_eq!(config.auth_keys.len(), 10_000);
+    }
+
+    #[test]
+    #[should_panic = "Too many AUTH__AUTH_KEYS__* entries"]
+    fn test_auth_config_too_many_keys() {
+        let mut env = base_valid_env();
+        for i in 0..10_000 {
+            // one already present
+            insert_auth_keys(
+                &mut env,
+                &format!("username{}", i),
+                &format!("http://example.com/user{}.keys", i),
+            );
+        }
+
+        AuthConfig::from_env(&env).expect("Should panic due to too many keys");
+    }
+
+    #[test]
+    fn test_that_auth_key_url_should_have_scheme() {
+        let mut env = base_valid_env();
+        insert_auth_keys(&mut env, "username1", "www.example.com/user1.keys");
+
+        let err = AuthConfig::from_env(&env);
+
+        assert!(err.is_err());
+        assert_eq!(
+            err.expect_err("Should fail due to missing scheme").to_string(),
+            "Invalid environment variable: AUTH__AUTH_KEYS__*: www.example.com/user1.keys, failed due to: relative URL without a base"
+        );
+    }
+
+    #[test]
+    fn test_that_auth_key_url_must_not_be_base() {
+        let mut env = base_valid_env();
+        insert_auth_keys(&mut env, "username1", "file:///user1.keys");
+
+        let err = AuthConfig::from_env(&env);
+
+        assert!(err.is_err());
+        assert_eq!(
+            err.expect_err("Should fail due to base URL").to_string(),
+            "Invalid environment variable: AUTH__AUTH_KEYS__*: (Url { scheme: \"file\", cannot_be_a_base: false, username: \"\", password: None, host: None, port: None, path: \"/user1.keys\", query: None, fragment: None }, \"username1\"), failed due to: Invalid URL"
         );
     }
 }
