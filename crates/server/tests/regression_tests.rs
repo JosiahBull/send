@@ -776,7 +776,7 @@ async fn test_that_missing_auth_fails(
 #[awt]
 #[timeout(std::time::Duration::from_secs(30))]
 #[tokio::test]
-async fn test_downloading_non_existant_file(
+async fn test_downloading_non_existent_file(
     #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
 ) {
     let (_, _, free_port, started_server) = server_with_keys_initalised;
@@ -796,7 +796,7 @@ async fn test_downloading_non_existant_file(
     }
     insta::assert_snapshot!(body);
 
-    // Attempt to download a non-existant file with a valid id
+    // Attempt to download a non-existent file with a valid id
 
     // Try downloading the page
     let response = reqwest::get(&format!("http://127.0.0.1:{}/w33rwptc", free_port))

@@ -130,7 +130,7 @@ impl UploadId {
         clippy::indexing_slicing,
         reason = "Constant fn will fail at compile time if out of bounds."
     )]
-    #[cfg_attr(test, mutants::skip)] // Skipped becuase mutants to while loop create timeouts
+    #[cfg_attr(test, mutants::skip)] // Skipped because mutants to while loop create timeouts
     pub const fn max_id_length() -> usize {
         let largest_usize = {
             let mut largest_so_far = usize::MIN;
@@ -192,7 +192,7 @@ impl UploadId {
                 .map(|i| {
                     *GEN_ALPHABET
                         .get(i)
-                        .expect("Generated value is guarenteed to be within bounds of alphabet.")
+                        .expect("Generated value is guaranteed to be within bounds of alphabet.")
                 })
                 .chain(std::iter::once('z')); // Push extra item into iterator for next step to work correctly, should not show up in final id.
 
@@ -231,7 +231,7 @@ impl UploadId {
                 .map(|b| {
                     *CHECK_LOOKUP
                         .get(b as usize)
-                        .expect("Generated value is guarenteed to be within bounds.")
+                        .expect("Generated value is guaranteed to be within bounds.")
                 })
                 // SAFETY: Sum cannot overflow as N is less than the maximum allowable length.
                 .sum::<u64>()
@@ -239,7 +239,7 @@ impl UploadId {
             id.push(
                 *CHECK_ALPHABET
                     .get(check_char_idx as usize)
-                    .expect("Generated value is guarenteed to be within bounds of check alphabet."),
+                    .expect("Generated value is guaranteed to be within bounds of check alphabet."),
             );
 
             debug_assert!(
@@ -351,7 +351,7 @@ impl UploadId {
             .sum::<u64>()
             % CHECK_ALPHABET.len() as u64;
         let expected_check_char = CHECK_ALPHABET.get(expt_check_char_idx as usize).expect(
-            "expt_check_char_idx is guarenteed to be within bounds of check alphabet becuase it has been modded by the length of the alphabet.",
+            "expt_check_char_idx is guaranteed to be within bounds of check alphabet because it has been modded by the length of the alphabet.",
         );
 
         if check_char != expected_check_char.to_string() {

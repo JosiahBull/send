@@ -1,6 +1,6 @@
 //! Error types for the database.
 
-/// A convienent wrapper over `Result`, specifically catering to a database error.
+/// A convenient wrapper over `Result`, specifically catering to a database error.
 pub type DatabaseResult<T> = Result<T, DatabaseError>;
 
 /// A 'kitchen sink' error type for the database.
