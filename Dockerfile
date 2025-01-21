@@ -16,7 +16,7 @@ RUN cargo chef cook --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --color=always --package server
 
-FROM alpine:3.18 AS runtime
+FROM alpine:3.21 AS runtime
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /usr/src/server/target/release/server /usr/local/bin/server
 
