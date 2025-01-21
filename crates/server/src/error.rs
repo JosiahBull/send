@@ -61,9 +61,13 @@ pub enum ServerError {
     #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),
     #[error(transparent)]
+    ReqwestMiddlewareError(#[from] reqwest_middleware::Error),
+    #[error(transparent)]
     TokioTimeoutError(#[from] tokio::time::error::Elapsed),
     #[error(transparent)]
     TokioJoinError(#[from] tokio::task::JoinError),
+    #[error(transparent)]
+    OpenTelemetryLoggingError(#[from] opentelemetry_sdk::logs::LogError),
 }
 
 impl ServerError {
@@ -90,8 +94,10 @@ impl ServerError {
             Self::TokioIoError(_) => "TokioIoError",
             Self::DatabaseError(_) => "DatabaseError",
             Self::ReqwestError(_) => "ReqwestError",
+            Self::ReqwestMiddlewareError(_) => "ReqwestMiddlewareError",
             Self::TokioTimeoutError(_) => "TokioTimeoutError",
             Self::TokioJoinError(_) => "TokioJoinError",
+            Self::OpenTelemetryLoggingError(_) => "OpenTelemetryLoggingError",
         }
     }
 
@@ -117,8 +123,10 @@ impl ServerError {
             Self::TokioIoError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::DatabaseError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::ReqwestError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ReqwestMiddlewareError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::TokioTimeoutError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::TokioJoinError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Self::OpenTelemetryLoggingError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

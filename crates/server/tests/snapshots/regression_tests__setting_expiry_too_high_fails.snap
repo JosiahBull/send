@@ -1,0 +1,5 @@
+---
+source: crates/server/tests/regression_tests.rs
+expression: body
+---
+Expiry must be between 5s and 86400s

@@ -1,10 +1,12 @@
 //! Represents a user uploaded file in the database. See [`Upload::builder`] for creating a new instance,
 //! and [`Upload::insert`] for inserting it into the database.
 
+use std::num::NonZeroU64;
+
 use bon::bon;
 use sqlx::types::{chrono, uuid};
 
-use crate::DatabaseError;
+use crate::{error::DatabaseResult, DatabaseError};
 
 /// Represents a user uploaded file in the database. See [`Upload::builder`] for creating a new instance,
 /// and [`Upload::insert`] for inserting it into the database.
@@ -22,6 +24,7 @@ use crate::DatabaseError;
 /// # use sqlx::SqlitePool;
 /// # use chrono::Utc;
 /// # use database::{Upload, migrate};
+/// # use std::num::NonZeroU64;
 /// # tokio_test::block_on(async {
 ///   let pool = SqlitePool::connect("sqlite::memory:").await?;
 /// # migrate(&pool).await?;
@@ -29,7 +32,7 @@ use crate::DatabaseError;
 ///     .upload_key("12345678".to_string()).expect("upload_key too long")
 ///     .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
 ///     .file_name("file_name".to_string()).expect("file_name too long")
-///     .file_size(1024)
+///     .file_size(NonZeroU64::new(1024).expect("Non-zero"))
 ///     .now(Utc::now())
 ///     .expires_at(Utc::now() + chrono::Duration::days(30))
 ///     .build();
@@ -58,8 +61,7 @@ pub struct Upload {
     /// MAX length: 255
     pub file_name: String,
     /// The size of the file in bytes, stored as an i64 to be more friendly with the database.
-    // XXX: Could be changed to a NonZero u64 to be more typesafe.
-    pub file_size: i64,
+    pub file_size: NonZeroU64,
 
     /// The time the upload was created.
     pub created_at: chrono::DateTime<sqlx::types::chrono::Utc>,
@@ -89,12 +91,13 @@ impl Upload {
     /// ```rust
     /// # use database::Upload;
     /// # use chrono::Utc;
+    /// # use std::num::NonZeroU64;
     /// let now = Utc::now();
     /// let upload = Upload::builder()
     ///     .upload_key("12345678".to_string()).expect("upload_key too long")
     ///     .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     ///     .file_name("file_name".to_string()).expect("file_name too long")
-    ///     .file_size(1024)
+    ///     .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     ///     .now(now)
     ///     .expires_at(now + chrono::Duration::days(30))
     ///     .build();
@@ -102,7 +105,7 @@ impl Upload {
     /// # assert_eq!(upload.upload_key, "12345678");
     /// # assert_eq!(upload.uploader_username, "uploader_username");
     /// # assert_eq!(upload.file_name, "file_name");
-    /// # assert_eq!(upload.file_size, 1024);
+    /// # assert_eq!(upload.file_size, NonZeroU64::new(1024).expect("Non-zero"));
     /// # assert_eq!(upload.created_at, now);
     /// # assert_eq!(upload.updated_at, now);
     /// # assert_eq!(upload.expires_at, now + chrono::Duration::days(30));
@@ -143,7 +146,7 @@ impl Upload {
             Ok(x)
         })]
         file_name: String,
-        file_size: i64,
+        file_size: NonZeroU64,
 
         now: chrono::DateTime<chrono::Utc>,
         expires_at: chrono::DateTime<chrono::Utc>,
@@ -178,6 +181,7 @@ impl Upload {
     ///
     /// # Examples
     /// ```rust
+    /// # use std::num::NonZeroU64;
     /// # use sqlx::SqlitePool;
     /// # use database::{Upload, migrate};
     /// # use uuid::Uuid;
@@ -188,7 +192,7 @@ impl Upload {
     ///   #   .upload_key("12345678".to_string()).expect("upload_key too long")
     ///   #   .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     ///   #   .file_name("file_name".to_string()).expect("file_name too long")
-    ///   #   .file_size(1024)
+    ///   #   .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     ///   #   .now(chrono::Utc::now())
     ///   #   .expires_at(chrono::Utc::now() + chrono::Duration::days(30))
     ///   #   .build();
@@ -226,7 +230,7 @@ impl Upload {
 
                 file_name_on_disk as "file_name_on_disk: uuid::Uuid",
                 file_name as "file_name: String",
-                file_size as "file_size: i64",
+                file_size as "file_size: NonZeroU64",
 
                 created_at as "created_at: chrono::DateTime<chrono::Utc>",
                 updated_at as "updated_at: chrono::DateTime<chrono::Utc>",
@@ -252,6 +256,7 @@ impl Upload {
     /// ```rust
     /// # use sqlx::SqlitePool;
     /// # use database::{Upload, migrate};
+    /// # use std::num::NonZeroU64;
     /// # tokio_test::block_on(async {
     ///   let pool = SqlitePool::connect("sqlite::memory:").await?;
     ///   # migrate(&pool).await?;
@@ -259,7 +264,7 @@ impl Upload {
     ///   #   .upload_key("12345678".to_string()).expect("upload_key too long")
     ///   #   .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     ///   #   .file_name("file_name".to_string()).expect("file_name too long")
-    ///   #   .file_size(1024)
+    ///   #   .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     ///   #   .now(chrono::Utc::now())
     ///   #   .expires_at(chrono::Utc::now() + chrono::Duration::days(30))
     ///   #   .build();
@@ -299,7 +304,7 @@ impl Upload {
 
                 file_name_on_disk as "file_name_on_disk: uuid::Uuid",
                 file_name as "file_name: String",
-                file_size as "file_size: i64",
+                file_size as "file_size: NonZeroU64",
 
                 created_at as "created_at: chrono::DateTime<chrono::Utc>",
                 updated_at as "updated_at: chrono::DateTime<chrono::Utc>",
@@ -324,6 +329,7 @@ impl Upload {
     /// ```
     /// # use database::{Upload, migrate};
     /// # use sqlx::SqlitePool;
+    /// # use std::num::NonZeroU64;
     /// # tokio_test::block_on(async {
     /// let pool = SqlitePool::connect("sqlite::memory:").await?;
     /// # migrate(&pool).await?;
@@ -331,7 +337,7 @@ impl Upload {
     /// #   .upload_key("12345677".to_string()).expect("upload_key too long")
     /// #   .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     /// #   .file_name("file_name".to_string()).expect("file_name too long")
-    /// #   .file_size(1024)
+    /// #   .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     /// #   .now(chrono::Utc::now())
     /// #   .expires_at(chrono::Utc::now() + chrono::Duration::days(30))
     /// #   .build();
@@ -340,7 +346,7 @@ impl Upload {
     /// #   .upload_key("12345678".to_string()).expect("upload_key too long")
     /// #   .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     /// #   .file_name("file_name".to_string()).expect("file_name too long")
-    /// #   .file_size(1024)
+    /// #   .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     /// #   .now(chrono::Utc::now())
     /// #   .expires_at(chrono::Utc::now() + chrono::Duration::seconds(5))
     /// #   .build();
@@ -383,7 +389,7 @@ impl Upload {
 
                 file_name_on_disk as "file_name_on_disk: uuid::Uuid",
                 file_name as "file_name: String",
-                file_size as "file_size: i64",
+                file_size as "file_size: NonZeroU64",
 
                 created_at as "created_at: chrono::DateTime<chrono::Utc>",
                 updated_at as "updated_at: chrono::DateTime<chrono::Utc>",
@@ -415,6 +421,7 @@ impl Upload {
     /// # use uuid::uuid;
     /// # use sqlx::SqlitePool;
     /// # use database::{Upload, migrate};
+    /// # use std::num::NonZeroU64;
     /// # tokio_test::block_on(async {
     ///  let pool = SqlitePool::connect("sqlite::memory:").await?;
     /// # migrate(&pool).await?;
@@ -422,7 +429,7 @@ impl Upload {
     /// #     .upload_key("12345678".to_string()).expect("upload_key too long")
     /// #     .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     /// #     .file_name("file_name".to_string()).expect("file_name too long")
-    /// #     .file_size(1024)
+    /// #     .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     /// #     .now(chrono::Utc::now())
     /// #     .expires_at(chrono::Utc::now() + chrono::Duration::days(30))
     /// #     .build();
@@ -438,6 +445,7 @@ impl Upload {
     /// ```
     ///
     /// # Errors
+    ///
     /// This function will return an error if the query execution fails.
     pub async fn select_by_file_name_on_disk<'e, E>(
         executor: E,
@@ -458,7 +466,7 @@ impl Upload {
 
                 file_name_on_disk as "file_name_on_disk: uuid::Uuid",
                 file_name as "file_name: String",
-                file_size as "file_size: i64",
+                file_size as "file_size: NonZeroU64",
 
                 created_at as "created_at: chrono::DateTime<chrono::Utc>",
                 updated_at as "updated_at: chrono::DateTime<chrono::Utc>",
@@ -485,6 +493,7 @@ impl Upload {
     /// # use sqlx::SqlitePool;
     /// # use chrono::Utc;
     /// # use database::{Upload, migrate};
+    /// # use std::num::NonZeroU64;
     /// # tokio_test::block_on(async {
     ///   let pool = SqlitePool::connect("sqlite::memory:").await?;
     /// # migrate(&pool).await?;
@@ -492,7 +501,7 @@ impl Upload {
     ///     .upload_key("12345678".to_string()).expect("upload_key too long")
     ///     .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     ///     .file_name("file_name".to_string()).expect("file_name too long")
-    ///     .file_size(1024)
+    ///     .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     ///     .now(Utc::now())
     ///     .expires_at(Utc::now() + chrono::Duration::days(30))
     ///     .build();
@@ -505,10 +514,12 @@ impl Upload {
     /// # Errors
     ///
     /// This function can return any error that [`sqlx::query`] can return.
-    pub async fn insert<'e, E>(&self, executor: E) -> Result<(), sqlx::Error>
+    pub async fn insert<'e, E>(&self, executor: E) -> DatabaseResult<()>
     where
         E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
     {
+        let file_size: i64 = i64::try_from(self.file_size.get())?;
+
         sqlx::query!(
             r#"
             INSERT INTO uploads (id, upload_key, uploader_username, file_name_on_disk, file_name, file_size, created_at, updated_at, expires_at, uploaded_at, deleted_at)
@@ -522,7 +533,7 @@ impl Upload {
 
             self.file_name_on_disk,
             self.file_name,
-            self.file_size,
+            file_size,
 
             self.created_at,
             self.updated_at,
@@ -544,6 +555,7 @@ impl Upload {
     /// # use sqlx::SqlitePool;
     /// # use chrono::Utc;
     /// # use database::{Upload, migrate};
+    /// # use std::num::NonZeroU64;
     /// # tokio_test::block_on(async {
     ///   let pool = SqlitePool::connect("sqlite::memory:").await?;
     /// # migrate(&pool).await?;
@@ -551,19 +563,19 @@ impl Upload {
     ///     .upload_key("12345678".to_string()).expect("upload_key too long")
     ///     .uploader_username("uploader_username".to_string()).expect("uploader_username too long")
     ///     .file_name("file_name".to_string()).expect("file_name too long")
-    ///     .file_size(1024)
+    ///     .file_size(NonZeroU64::new(1024).expect("Non-zero"))
     ///     .now(Utc::now())
     ///     .expires_at(Utc::now() + chrono::Duration::days(30))
     ///     .build();
     ///   new_upload.insert(&pool).await?;
     ///
     ///   // Update some fields
-    ///   new_upload.file_size = 2048;
+    ///   new_upload.file_size = NonZeroU64::new(2048).expect("Non-zero");
     ///   new_upload.updated_at = Utc::now();
     ///   new_upload.uploaded_at = Some(Utc::now());
     ///
     ///   new_upload.update(&pool).await?;
-    /// # assert_eq!(Upload::select_by_upload_key(&pool, "12345678").await?.unwrap().file_size, 2048);
+    /// # assert_eq!(Upload::select_by_upload_key(&pool, "12345678").await?.unwrap().file_size, NonZeroU64::new(2048).expect("Non-zero"));
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// # }).unwrap();
     /// ```
@@ -571,10 +583,12 @@ impl Upload {
     /// # Errors
     ///
     /// This function can return any error that [`sqlx::query`] can return.
-    pub async fn update<'e, E>(&self, executor: E) -> Result<(), sqlx::Error>
+    pub async fn update<'e, E>(&self, executor: E) -> DatabaseResult<()>
     where
         E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
     {
+        let file_size: i64 = i64::try_from(self.file_size.get())?;
+
         sqlx::query!(
             r#"
             UPDATE uploads
@@ -585,7 +599,7 @@ impl Upload {
             self.upload_key,
             self.uploader_username,
             self.file_name_on_disk,
-            self.file_size,
+            file_size,
             self.updated_at,
             self.uploaded_at,
             self.deleted_at,

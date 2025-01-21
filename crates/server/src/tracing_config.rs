@@ -9,6 +9,9 @@ use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Layer;
 
+use crate::error::ServerResult;
+
+/// Initialize the meter provider for metrics.
 fn init_meter_provider(
 ) -> Result<opentelemetry_sdk::metrics::SdkMeterProvider, opentelemetry_sdk::metrics::MetricError> {
     let exporter = opentelemetry_otlp::MetricExporter::builder()
@@ -26,13 +29,13 @@ fn init_meter_provider(
         ]))
         .build();
 
-    let cloned_provider = provider.clone();
-    opentelemetry::global::set_meter_provider(cloned_provider);
+    opentelemetry::global::set_meter_provider(provider.clone());
+
     Ok(provider)
 }
 
-fn init_logger_provider(
-) -> Result<opentelemetry_sdk::logs::LoggerProvider, opentelemetry_sdk::logs::LogError> {
+/// Initialize the logger provider for logs.
+fn init_logger_provider() -> ServerResult<opentelemetry_sdk::logs::LoggerProvider> {
     // Note Opentelemetry does not provide a global API to manage the logger provider.
     let exporter = LogExporter::builder().with_tonic().build()?;
 
@@ -43,12 +46,13 @@ fn init_logger_provider(
     Ok(provider)
 }
 
-pub fn init_tracing() {
+/// Initialize the tracing layer.
+pub fn init_tracing() -> (opentelemetry_sdk::metrics::SdkMeterProvider, opentelemetry_sdk::trace::TracerProvider){
     opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
     // Metrics
-    let meter_provider = init_meter_provider().unwrap();
-    let opentelemetry_metrics_layer = tracing_opentelemetry::MetricsLayer::new(meter_provider);
+    let meter_provider = init_meter_provider().expect("Failed to create meter provider");
+    let opentelemetry_metrics_layer = tracing_opentelemetry::MetricsLayer::new(meter_provider.clone());
 
     // Tracing
     // Uses OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
@@ -56,7 +60,7 @@ pub fn init_tracing() {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
         .build()
-        .unwrap();
+        .expect("Failed to create OTLP exporter");
 
     let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
         .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
@@ -69,13 +73,13 @@ pub fn init_tracing() {
     // Filter the tracing layer - we can add custom filters that only impact the tracing layer
     let tracing_level_filter = tracing_subscriber::filter::Targets::new()
         .with_target(env!("CARGO_PKG_NAME"), tracing::Level::TRACE)
-        .with_target("sqlx", tracing::Level::DEBUG)
-        .with_target("tower_http", tracing::Level::INFO)
-        .with_target("hyper_util", tracing::Level::INFO)
-        .with_target("h2", tracing::Level::WARN)
+        .with_target("sqlx", tracing::Level::TRACE)
+        .with_target("tower_http", tracing::Level::TRACE)
+        .with_target("hyper_util", tracing::Level::TRACE)
+        .with_target("h2", tracing::Level::TRACE)
         // Note an optional feature flag crate sets this most important trace from tracing to info level
-        .with_target("otel::tracing", tracing::Level::INFO)
-        .with_default(tracing::Level::INFO);
+        .with_target("otel::tracing", tracing::Level::TRACE)
+        .with_default(tracing::Level::TRACE);
 
     // turn our OTLP pipeline into a tracing layer
     let tracing_opentelemetry_layer = tracing_opentelemetry::layer()
@@ -85,7 +89,7 @@ pub fn init_tracing() {
     // Configure the stdout fmt layer
     let format = tracing_subscriber::fmt::format()
         .with_level(true)
-        .with_target(false)
+        .with_target(true)
         .with_thread_ids(false)
         .with_thread_names(false)
         .compact();
@@ -95,7 +99,7 @@ pub fn init_tracing() {
     // Logs to OTEL
     // Note this won't have trace context because that's only known about by the tracing system
     // not the opentelemetry system. https://github.com/open-telemetry/opentelemetry-rust/issues/1378
-    let log_provider = init_logger_provider().unwrap();
+    let log_provider = init_logger_provider().expect("Failed to create logger provider");
     // Add a tracing filter to filter events from crates used by opentelemetry-otlp.
     // The filter levels are set as follows:
     // - Allow `info` level and above by default.
@@ -108,9 +112,9 @@ pub fn init_tracing() {
         "info,backend=debug,{}=debug,sqlx=info",
         env!("CARGO_PKG_NAME")
     ))
-    .add_directive("hyper=error".parse().unwrap())
-    .add_directive("tonic=error".parse().unwrap())
-    .add_directive("reqwest=error".parse().unwrap());
+    .add_directive("hyper=error".parse().expect("Failed to parse directive"))
+    .add_directive("tonic=error".parse().expect("Failed to parse directive"))
+    .add_directive("reqwest=error".parse().expect("Failed to parse directive"));
 
     let otel_log_layer =
         opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(&log_provider)
@@ -131,4 +135,6 @@ pub fn init_tracing() {
 
     // Set the subscriber as the global default
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
+
+    (meter_provider, tracer_provider)
 }

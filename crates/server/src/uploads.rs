@@ -2,6 +2,7 @@
 //! overrun the storage allocated to the service.
 
 use std::{
+    num::NonZeroU64,
     path::PathBuf,
     sync::{atomic::AtomicU64, Arc},
 };
@@ -28,9 +29,9 @@ pub struct Uploads {
     /// The location of the cache directory on disk.
     cache_directory: PathBuf,
     /// The maximum size of a single upload.
-    max_allowed_file_size: u64,
+    max_allowed_file_size: NonZeroU64,
     /// The total maximum size of all files on disk.
-    max_allowed_cache_size: u64,
+    max_allowed_cache_size: NonZeroU64,
 
     /// The minimum time an upload is allowed to live for.
     min_time_to_live: std::time::Duration,
@@ -97,7 +98,7 @@ async fn bookkeeping(
                 upload.file_name_on_disk = None;
                 upload.deleted_at = Some(now);
                 size_of_files_on_disk.fetch_sub(
-                    upload.file_size as u64,
+                    upload.file_size.into(),
                     std::sync::atomic::Ordering::Relaxed,
                 );
                 upload.update(db_pool).await?;
@@ -157,9 +158,9 @@ impl Uploads {
         /// The directory where files will be stored.
         cache_directory: PathBuf,
         /// The maximum size of a single upload.
-        max_allowed_file_size: u64,
+        max_allowed_file_size: NonZeroU64,
         /// The total maximum size of all files on disk.
-        max_allowed_cache_size: u64,
+        max_allowed_cache_size: NonZeroU64,
         /// The minimum time an upload is allowed to live for.
         min_time_to_live: std::time::Duration,
         /// The maximum time an upload is allowed to live for.
@@ -280,14 +281,14 @@ impl Uploads {
         file_name: String,
 
         /// The size of the file.
-        file_size: i64,
+        file_size: NonZeroU64,
 
         /// How long the file should be stored for.
         expiry: std::time::Duration,
     ) -> ServerResult<UploadId> {
         let upload_id = UploadId::generate::<8>();
 
-        if file_size < 0 || file_size > self.max_allowed_file_size as i64 {
+        if file_size > self.max_allowed_file_size {
             return Err(ServerError::FileTooBig);
         }
 
@@ -329,7 +330,7 @@ impl Uploads {
     pub async fn upload<T>(
         &self,
         key: UploadId,
-        upload_size: u64,
+        upload_size: NonZeroU64,
         upload_stream: T,
     ) -> ServerResult<()>
     where
@@ -343,8 +344,8 @@ impl Uploads {
         if self
             .size_of_files_on_disk
             .load(std::sync::atomic::Ordering::Relaxed)
-            .saturating_add(upload_size)
-            > self.max_allowed_cache_size
+            .saturating_add(upload_size.into())
+            > self.max_allowed_cache_size.into()
         {
             return Err(ServerError::FileTooBig);
         }
@@ -382,43 +383,36 @@ impl Uploads {
             mut file: tokio::fs::File,
             mut upload_stream: T,
             size_of_files_on_disk: Arc<AtomicU64>,
-            max_allowed_cache_size: u64,
-            max_allowed_file_size: u64,
-        ) -> Result<u64, (ServerError, T)>
+            max_allowed_cache_size: NonZeroU64,
+            max_allowed_file_size: NonZeroU64,
+        ) -> ServerResult<u64>
         where
             T: Stream<Item = ServerResult<axum::body::Bytes>> + Unpin,
         {
             let mut bytes_written_so_far: u64 = 0;
             while let Some(chunk) = upload_stream.next().await {
-                match chunk {
-                    Ok(chunk) => {
-                        // Ensure we haven't exceeded max size for an individual file.
-                        bytes_written_so_far = bytes_written_so_far
-                            .checked_add(chunk.len() as u64)
-                            .expect("Overflow error");
-                        if bytes_written_so_far > max_allowed_file_size {
-                            return Err((ServerError::FileTooBig, upload_stream));
-                        }
+                let chunk = chunk?;
 
-                        // Ensure we haven't exceeded the total cache size.
-                        let size_of_files_on_disk = size_of_files_on_disk
-                            .fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
-                        if size_of_files_on_disk
-                            .checked_add(chunk.len() as u64)
-                            .expect("Overflow error")
-                            > max_allowed_cache_size
-                        {
-                            return Err((ServerError::FileTooBig, upload_stream));
-                        }
-
-                        if let Err(e) = file.write_all(&chunk).await {
-                            return Err((e.into(), upload_stream));
-                        }
-                    }
-                    Err(err) => {
-                        return Err((err, upload_stream));
-                    }
+                // Ensure we haven't exceeded max size for an individual file.
+                bytes_written_so_far = bytes_written_so_far
+                    .checked_add(chunk.len() as u64)
+                    .expect("Overflow error");
+                if bytes_written_so_far > max_allowed_file_size.into() {
+                    return Err(ServerError::FileTooBig);
                 }
+
+                // Ensure we haven't exceeded the total cache size.
+                let size_of_files_on_disk = size_of_files_on_disk
+                    .fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                if size_of_files_on_disk
+                    .checked_add(chunk.len() as u64)
+                    .expect("Overflow error")
+                    > max_allowed_cache_size.into()
+                {
+                    return Err(ServerError::FileTooBig);
+                }
+
+                file.write_all(&chunk).await?;
             }
 
             Ok(bytes_written_so_far)
@@ -434,33 +428,18 @@ impl Uploads {
         .await
         {
             Ok(len) => {
-                upload.file_size = len as i64;
+                upload.file_size = NonZeroU64::new(len).ok_or(ServerError::BadRequest {
+                    reason: "Uploaded file must have at least 1 byte.".to_string(),
+                })?;
                 upload.uploaded_at = Some(chrono::Utc::now());
                 upload.update(&self.db_pool).await?;
             }
-            #[cfg_attr(
-                not(test),
-                allow(
-                    unused_variables,
-                    unused_mut,
-                    reason = "We don't need to handle this in tests"
-                )
-            )]
-            Err((err, mut stream)) => {
-                // Try to remove the file if we can.
+            Err(err) => {
                 if let Err(e) = tokio::fs::remove_file(&file_path).await {
                     tracing::error!("Failed to remove file: {:?}", e);
                 }
                 upload.file_name_on_disk = None;
                 upload.update(&self.db_pool).await?;
-
-                // Drain any remaining bytes from the stream.
-                // NOTE: this is required to get a consistent test result by avoiding any "broken pipe" errors.
-                // #[cfg(test)]
-                // {
-                while (stream.next().await).is_some() {}
-                // }
-
                 return Err(err);
             }
         }

@@ -19,13 +19,6 @@ RUN apt-get update && apt-get install -y \
     nano \
     software-properties-common
 
-# HACK: thefuck doesn't support python 3.12 yet, so we forcibly downgrade to python 3.11
-# Forcibly downgrade to python 3.11
-RUN add-apt-repository ppa:deadsnakes/ppa
-RUN apt-get update && apt-get install -y python3.11 python3.11-dev python3.11-distutils
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-# END HACK
-
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"

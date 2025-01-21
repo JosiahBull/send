@@ -226,6 +226,10 @@ impl GithubKeys {
                 .build()
                 .expect("Failed to build reqwest::Client");
 
+            let client = reqwest_middleware::ClientBuilder::new(client)
+                .with(reqwest_tracing::TracingMiddleware::default())
+                .build();
+
             let cancel_token = cancel_token.child_token();
 
             async move {
