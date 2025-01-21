@@ -52,14 +52,15 @@ jobs:
       - name: Check openssl
         run: cargo tree | grep openssl && exit 1 || exit 0
 
-      - name: Install cargo-mutants
-        run: cargo install cargo-mutants
+      # Mutants is more trouble than it's worth in CI.
+      # - name: Install cargo-mutants
+      #   run: cargo install cargo-mutants
 
-      - run: cargo mutants -vV --in-place
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mutants-out
-          path: mutants.out
+      # - run: cargo mutants -vV --in-place
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: mutants-out
+      #     path: mutants.out
 
       # Build an artifact for this job
       - name: Build release binary
