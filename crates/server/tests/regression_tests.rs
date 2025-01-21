@@ -85,14 +85,12 @@ impl Drop for ServerInstance {
             .join()
             .unwrap();
 
-        if !output.success() | *armed {
+        if !output.success() | *armed || stderr.contains("panic") || stderr.contains("panicked") {
             panic!(
                 "Server exited with status: {}\nstdout:\n{}\nstderr:\n{}",
                 output, stdout, stderr
             );
         }
-        assert!(!stderr.contains("panic"), "Server panicked");
-        assert!(!stderr.contains("panicked"), "Server errored");
     }
 }
 
@@ -153,12 +151,13 @@ async fn started_server(
     cmd.env_clear()
         // Rust directives
         .env("RUST_LOG", "DEBUG")
-
         // OTEL directives
         .env("OTEL_SERVICE_NAME", "backend")
-        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://telemetry.orb.local:4317")
+        .env(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "http://telemetry.orb.local:4317",
+        )
         .env("TRACE_SAMPLE_PROBABILITY", "1.0")
-
         // Server directives
         .env("SERVER__HOST", "127.0.0.1")
         .env("SERVER__PORT", free_port.to_string())
@@ -1166,7 +1165,6 @@ async fn test_setting_expiry_too_high_fails(
 
     started_server.disarm();
 }
-
 
 /// In download.hbs we link to some static files hosted by someone else. these must always be live -
 /// otherwise we want to fail the test suite so we know to update the files.

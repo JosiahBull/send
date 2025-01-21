@@ -1,6 +1,5 @@
 {
   "db_name": "SQLite",
-  "query": "\n            SELECT\n                id as \"id: uuid::Uuid\",\n\n                upload_key as \"upload_key: String\",\n\n                uploader_username as \"uploader_username: String\",\n\n                file_name_on_disk as \"file_name_on_disk: uuid::Uuid\",\n                file_name as \"file_name: String\",\n                file_size as \"file_size: NonZeroU64\",\n\n                created_at as \"created_at: chrono::DateTime<chrono::Utc>\",\n                updated_at as \"updated_at: chrono::DateTime<chrono::Utc>\",\n                expires_at as \"expires_at: chrono::DateTime<chrono::Utc>\",\n\n                uploaded_at as \"uploaded_at: chrono::DateTime<chrono::Utc>\",\n                deleted_at as \"deleted_at: chrono::DateTime<chrono::Utc>\"\n            FROM uploads\n            WHERE\n                file_name_on_disk = ?\n            ",
   "describe": {
     "columns": [
       {
@@ -59,9 +58,6 @@
         "type_info": "Null"
       }
     ],
-    "parameters": {
-      "Right": 1
-    },
     "nullable": [
       false,
       false,
@@ -74,7 +70,11 @@
       false,
       true,
       true
-    ]
+    ],
+    "parameters": {
+      "Right": 1
+    }
   },
-  "hash": "de582227b4de5bbdb4761132cca8ca5f46203998bb24e9b4c7f1cfee70ba400b"
+  "hash": "de582227b4de5bbdb4761132cca8ca5f46203998bb24e9b4c7f1cfee70ba400b",
+  "query": "\n            SELECT\n                id as \"id: uuid::Uuid\",\n\n                upload_key as \"upload_key: String\",\n\n                uploader_username as \"uploader_username: String\",\n\n                file_name_on_disk as \"file_name_on_disk: uuid::Uuid\",\n                file_name as \"file_name: String\",\n                file_size as \"file_size: NonZeroU64\",\n\n                created_at as \"created_at: chrono::DateTime<chrono::Utc>\",\n                updated_at as \"updated_at: chrono::DateTime<chrono::Utc>\",\n                expires_at as \"expires_at: chrono::DateTime<chrono::Utc>\",\n\n                uploaded_at as \"uploaded_at: chrono::DateTime<chrono::Utc>\",\n                deleted_at as \"deleted_at: chrono::DateTime<chrono::Utc>\"\n            FROM uploads\n            WHERE\n                file_name_on_disk = ?\n            "
 }

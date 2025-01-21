@@ -210,7 +210,10 @@ mod tests {
 
         let upload_fields = result.unwrap();
         assert_eq!(upload_fields.file_name, "test_file.txt");
-        assert_eq!(upload_fields.file_size, NonZeroU64::new(1024).expect("Non-zero"));
+        assert_eq!(
+            upload_fields.file_size,
+            NonZeroU64::new(1024).expect("Non-zero")
+        );
         assert_eq!(upload_fields.expiry, Duration::from_secs(3600));
     }
 

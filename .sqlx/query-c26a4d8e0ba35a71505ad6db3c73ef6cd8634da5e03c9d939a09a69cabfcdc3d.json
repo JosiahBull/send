@@ -1,12 +1,12 @@
 {
   "db_name": "SQLite",
-  "query": "\n            UPDATE uploads\n            SET upload_key = ?, uploader_username = ?, file_name_on_disk = ?, file_size = ?, updated_at = ?, uploaded_at = ?, deleted_at = ?\n            WHERE\n                id = ?\n            ",
   "describe": {
     "columns": [],
+    "nullable": [],
     "parameters": {
       "Right": 8
-    },
-    "nullable": []
+    }
   },
-  "hash": "c26a4d8e0ba35a71505ad6db3c73ef6cd8634da5e03c9d939a09a69cabfcdc3d"
+  "hash": "c26a4d8e0ba35a71505ad6db3c73ef6cd8634da5e03c9d939a09a69cabfcdc3d",
+  "query": "\n            UPDATE uploads\n            SET upload_key = ?, uploader_username = ?, file_name_on_disk = ?, file_size = ?, updated_at = ?, uploaded_at = ?, deleted_at = ?\n            WHERE\n                id = ?\n            "
 }

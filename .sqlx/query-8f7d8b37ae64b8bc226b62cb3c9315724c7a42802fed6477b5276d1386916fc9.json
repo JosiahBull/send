@@ -1,12 +1,12 @@
 {
   "db_name": "SQLite",
-  "query": "\n            INSERT INTO uploads (id, upload_key, uploader_username, file_name_on_disk, file_name, file_size, created_at, updated_at, expires_at, uploaded_at, deleted_at)\n            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n            ",
   "describe": {
     "columns": [],
+    "nullable": [],
     "parameters": {
       "Right": 11
-    },
-    "nullable": []
+    }
   },
-  "hash": "8f7d8b37ae64b8bc226b62cb3c9315724c7a42802fed6477b5276d1386916fc9"
+  "hash": "8f7d8b37ae64b8bc226b62cb3c9315724c7a42802fed6477b5276d1386916fc9",
+  "query": "\n            INSERT INTO uploads (id, upload_key, uploader_username, file_name_on_disk, file_name, file_size, created_at, updated_at, expires_at, uploaded_at, deleted_at)\n            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n            "
 }

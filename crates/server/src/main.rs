@@ -315,7 +315,7 @@ async fn main() {
 
     println!("{:#?}", config);
 
-    let (meter_provider, tracer_provider) = tracing_config::init_tracing();
+    tracing_config::init_tracing();
 
     let db_pool = sqlx::SqlitePool::connect(&config.database.url)
         .await
@@ -441,74 +441,10 @@ async fn main() {
     db_pool.close().await;
 
     tracing::info!("Shutting down OTEL providers");
-
-    /// A no-op instance of a `Meter`
-    #[derive(Debug, Default)]
-    pub(crate) struct NoopMeter {
-        _private: (),
-    }
-
-    impl NoopMeter {
-        /// Create a new no-op meter core.
-        pub(crate) fn new() -> Self {
-            NoopMeter { _private: () }
-        }
-    }
-
-    impl opentelemetry::metrics::InstrumentProvider for NoopMeter {}
-
-    // Shutdown the meter provider
-    /// A no-op instance of a `MetricProvider`
-    #[derive(Debug, Default)]
-    pub(crate) struct NoopMeterProvider {
-        _private: (),
-    }
-
-    impl NoopMeterProvider {
-        /// Create a new no-op meter provider.
-        pub(crate) fn new() -> Self {
-            NoopMeterProvider { _private: () }
-        }
-    }
-
-    impl opentelemetry::metrics::MeterProvider for NoopMeterProvider {
-        fn meter_with_scope(&self, _scope: opentelemetry::InstrumentationScope) -> opentelemetry::metrics::Meter {
-            opentelemetry::metrics::Meter::new(Arc::new(NoopMeter::new()))
-        }
-    }
-    opentelemetry::global::set_meter_provider(NoopMeterProvider::new());
-    meter_provider.force_flush().expect("Failed to flush meter");
-    meter_provider.shutdown().expect("Failed to shutdown meter provider");
-    drop(meter_provider);
-
-    // Shutdown the tracing provider
     opentelemetry::global::shutdown_tracer_provider();
-    for res in tracer_provider.force_flush() {
-        if let Err(err) = res {
-            panic!("Failed to flush tracer: {}", err);
-        }
-    }
-    tracer_provider.shutdown().expect("Failed to shutdown tracer provider");
-    drop(tracer_provider);
 
-    // Count the number of active threads left on the tokio runtime.
-    let runtime = tokio::runtime::Handle::current();
-    let now = std::time::Instant::now();
-    while runtime.metrics().num_alive_tasks() > 0 {
-        // tracing::debug!(
-        //     num_tasks = runtime.metrics().num_alive_tasks(),
-        //     time_elapsed = format!("{:.2?}", now.elapsed()),
-        //     "Waiting for all tasks to finish");
-        println!(
-            "num_tasks: {}, time_elapsed: {:.2?}",
-            runtime.metrics().num_alive_tasks(),
-            now.elapsed()
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        if now.elapsed() > std::time::Duration::from_secs(1000) {
-            panic!("Failed to wait for all tasks to finish in time");
-        }
-    }
+    // XXX: wait for flush + shutdown of all OTEL providers... currently not possible due to bug in
+    // OTEL which doesn't close all resources.
 
-    println!("Server shutdown");
+    tracing::info!("Server shutdown");
 }
