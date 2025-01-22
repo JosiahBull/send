@@ -2,10 +2,7 @@
 
 use std::{num::NonZeroU64, time::Duration};
 
-use axum::{
-    async_trait,
-    extract::{multipart::Field, FromRequest, Multipart, Request},
-};
+use axum::extract::{multipart::Field, FromRequest, Multipart, Request};
 
 use crate::error::ServerError;
 
@@ -22,7 +19,6 @@ pub struct UploadFields {
     pub multipart: Multipart,
 }
 
-#[async_trait]
 impl<S> FromRequest<S> for UploadFields
 where
     S: Send + Sync,
