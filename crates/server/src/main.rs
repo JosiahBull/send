@@ -235,8 +235,8 @@ pub fn router(app_state: AppState) -> Router {
                 })
         })
         // Download Routes
-        .route("/:upload_id", get(download_html))
-        .route("/:upload_id/file", get(download_stream))
+        .route("/{upload_id}", get(download_html))
+        .route("/{upload_id}/file", get(download_stream))
         // Homepage
         .route(
             "/",
