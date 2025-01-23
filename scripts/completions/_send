@@ -1,34 +1,80 @@
-#compdef upload.sh
+#compdef send
+compdef _send send
 
-_upload_completions() {
-  local cur option
-
-  cur="${words[$CURRENT]}"
-
-  if [[ "$cur" == "" ]]; then
-    compadd --key --domain --expiry --rename-file
-    return
+_send_debug() {
+  local file="${SEND_DEBUG_FILE:-}" # Use SEND_DEBUG_FILE if set, otherwise empty
+  if [[ -n ${file} ]]; then
+    print -r "$*" >> "${file}"
   fi
-
-  case "$cur" in
-    "--key")
-      compadd -- "$SEND_SSH_KEY"
-      ;;
-    "--domain")
-      compadd -- "$SEND_DOMAIN"
-      ;;
-    "--expiry")
-      compadd -- s m h d
-      ;;
-    "--rename-file")
-      _files
-      ;;
-    "--file-to-upload")
-      _files
-      ;;
-    *)
-      ;;
-  esac
 }
 
-_upload_completions "$@"
+_send_domains() {
+  local domains=()
+
+  # domains are written, each on a new line, in the file ~/.config/send/domains
+  if [[ -f ~/.config/send/domains ]]; then
+    while IFS= read -r line; do
+      domains+=("${line}")
+    done < ~/.config/send/domains
+  fi
+
+  if [[ -n ${domains} ]]; then
+    _send_debug "DEBUG: _send_domains: ${domains[*]}"
+    # shellcheck disable=SC2086
+    compadd $domains
+  fi
+}
+
+_send_keys() {
+  local file
+  local -a keys
+
+  for file in ~/.ssh/*; do
+    # Skip known_hosts, config, authorized keys, etc.
+    [[ ${file} == *known_hosts* ]] && continue
+    [[ ${file} == *config* ]] && continue
+    [[ ${file} == *authorized_keys* ]] && continue
+
+    relative_path=$(realpath --relative-to="$PWD" "$file")
+
+    # check if file is a private key
+    if [[ -f ${file} && ${relative_path} != *.pub ]]; then
+      keys+=(${relative_path})
+    fi
+  done
+
+  if [[ -n ${keys} ]]; then
+    _send_debug "DEBUG: _send_keys: ${keys[*]}"
+    _describe 'key' keys
+  fi
+}
+
+_send() {
+  local curcontext="$curcontext" _state line
+
+  args=()
+
+  if [ -z "${SEND_DOMAIN}" ]; then
+    args+=('--domain[Domain to use for sending]:domain:_send_domains')
+  fi
+
+  # Check if SEND_KEY env var is set
+  if [ -z "${SEND_KEY}" ]; then
+    args+=('--key[SSH key to use for sending]:key:_send_keys')
+  fi
+
+  args+=(
+    '--expiry[Expiry time (s/m/h/d)]:(s m h d)'
+    '--rename-file[Rename the uploaded file]:file:'
+    '1: :_files -/'
+  )
+
+  _arguments -C -s "${args[@]}"
+
+  _send_debug "DEBUG: _send function stack: ${funcstack[*]}"
+}
+
+if [ "$funcstack[1]" = "_send" ]; then
+  _send_debug "DEBUG: _send_completions function stack: ${funcstack[*]}"
+  _send "$@"
+fi
