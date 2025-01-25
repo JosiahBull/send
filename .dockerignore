@@ -1,1 +1,5 @@
-.gitignore
+# Ignore everything
+**
+
+# Include only the build file.
+!./target/tmp/server
