@@ -18,6 +18,12 @@ permissions:
 jobs:
   action-lint:
     runs-on: ubuntu-latest
+
+    timeout-minutes: 5
+    concurrency:
+      group: actionlint-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: true
+
     steps:
       - uses: actions/checkout@v4
       - name: Check workflow files
