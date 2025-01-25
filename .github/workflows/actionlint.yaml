@@ -3,13 +3,12 @@ name: actionlint
 on:
   pull_request:
     paths:
-      - ".github/workflows/*.{yml,yaml}"
+      - ".github/workflows/*.yaml"
   push:
     branches:
       - main
     paths:
-      - ".github/workflows/*.{yml,yaml}"
-  workflow_dispatch:
+      - ".github/workflows/*.yaml"
 
 permissions:
   contents: read

@@ -29,7 +29,8 @@
 				"ms-vscode.remote-explorer",
 				"rust-lang.rust-analyzer",
 				"Gruntfuggly.todo-tree",
-				"redhat.vscode-yaml"
+				"redhat.vscode-yaml",
+				"nefrob.vscode-just-syntax"
 			]
 		}
 	},
