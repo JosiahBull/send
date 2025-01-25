@@ -5,6 +5,7 @@ snapshot_kind: text
 ---
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,15 +25,17 @@ snapshot_kind: text
 
   <title>homework.docx</title>
 
-  <link rel="icon shortcut" href="/favicon.ico" type="image/x-icon">
-  <link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">
-  <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png">
-  <link rel="icon" href="/favicon-96x96.png" sizes="96x96" type="image/png">
-  <link rel="icon" href="/favicon-192x192.png" sizes="192x192" type="image/png">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <!-- All icons as required by the various platforms -->
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Send" />
+  <link rel="manifest" href="/site.webmanifest" />
 
   <link rel="stylesheet" href="/styles.css">
 </head>
+
 <body data-theme="light">
   <button class="theme-toggle" onclick="toggleTheme()">Light Mode</button>
 
@@ -50,15 +53,19 @@ snapshot_kind: text
       <div class="cli-instructions">
         <p><strong>Download via CLI:</strong></p>
         <div class="cli-command">
-            <span class="code">curl -o homework.docx https://www.downloads.mysite.com/homework.docx</span>
-          <svg class="copy-icon" onclick="copyCommand('curl -o homework.docx https://www.downloads.mysite.com/homework.docx')" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <path d="M19 3h-8c-1.1 0-2 .9-2 2v2H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-2h4c-1.1 0-2-.9 2-2V5c0-1.1-.9-2-2-2zm-6 14H5V9h8v8zm6-4h-4V5h4v8z"/>
+          <span class="code">curl -o homework.docx https://www.downloads.mysite.com/homework.docx</span>
+          <svg class="copy-icon" onclick="copyCommand('curl -o homework.docx https://www.downloads.mysite.com/homework.docx')"
+            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path
+              d="M19 3h-8c-1.1 0-2 .9-2 2v2H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-2h4c-1.1 0-2-.9 2-2V5c0-1.1-.9-2-2-2zm-6 14H5V9h8v8zm6-4h-4V5h4v8z" />
           </svg>
         </div>
         <div class="cli-command">
-            <span class="code">wget -O homework.docx https://www.downloads.mysite.com/homework.docx</span>
-          <svg class="copy-icon" onclick="copyCommand('wget -O homework.docx https://www.downloads.mysite.com/homework.docx')" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <path d="M19 3h-8c-1.1 0-2 .9-2 2v2H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-2h4c-1.1 0-2-.9 2-2V5c0-1.1-.9-2-2-2zm-6 14H5V9h8v8zm6-4h-4V5h4v8z"/>
+          <span class="code">wget -O homework.docx https://www.downloads.mysite.com/homework.docx</span>
+          <svg class="copy-icon" onclick="copyCommand('wget -O homework.docx https://www.downloads.mysite.com/homework.docx')"
+            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path
+              d="M19 3h-8c-1.1 0-2 .9-2 2v2H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-2h4c-1.1 0-2-.9 2-2V5c0-1.1-.9-2-2-2zm-6 14H5V9h8v8zm6-4h-4V5h4v8z" />
           </svg>
         </div>
       </div>
@@ -147,4 +154,5 @@ snapshot_kind: text
     }
   </script>
 </body>
+
 </html>

@@ -24,18 +24,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup toolchain install nightly
 
-# Install cargo-mutants, cargo-udeps, cargo-expand, cargo-audit
-RUN cargo +nightly install --locked cargo-udeps
-RUN cargo install --locked cargo-tarpaulin
-RUN cargo install --locked cargo-mutants
-RUN cargo install --locked cargo-expand
-RUN cargo install --locked cargo-audit
+# TODO: move to base image.
 RUN cargo install --locked sqlx-cli
 RUN cargo install --locked cargo-insta
-
-# Install python + python packages that I use for normal development
-RUN apt-get install -y python3 python3-pip
-RUN pip3 install --break-system-packages thefuck pre-commit
 
 # Install docker + docker compose so we can start containers for testing inside of our devcontainer
 RUN install -m 0755 -d /etc/apt/keyrings

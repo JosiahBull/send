@@ -1,5 +1,9 @@
 {
   "cSpell.words": [
-    "initalised"
+    "buildinfo",
+    "chrono",
+    "indexmap",
+    "initalised",
+    "sqlx"
   ]
 }

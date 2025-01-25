@@ -180,7 +180,9 @@ async fn started_server(
                 "http://127.0.0.1:{}/testuser.keys",
                 mock_keys_server.0.port()
             ),
-        );
+        )
+        .env("RATE_LIMIT__BUCKET_SIZE", "20")
+        .env("RATE_LIMIT__REFILL_INTERVAL", "5s");
 
     // Spawn a thread to run the server.
     let mut handle = cmd
@@ -1162,6 +1164,71 @@ async fn test_setting_expiry_too_high_fails(
     }
 
     insta::assert_snapshot!(body);
+
+    started_server.disarm();
+}
+
+#[rstest]
+#[awt]
+#[timeout(std::time::Duration::from_secs(30))]
+#[tokio::test]
+async fn test_that_ratelimiting_works(
+    #[future] server_with_keys_initalised: (PrivateKey, tempfile::TempDir, u16, ServerInstance),
+) {
+    let (_, _, free_port, started_server) = server_with_keys_initalised;
+
+    // We should be able to make up to 20 requests, then the 21st should fail.
+    for _ in 0..20 {
+        // Get a nonce
+        let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+            .await
+            .unwrap();
+
+        let status = response.status();
+        let body = response.text().await.unwrap();
+        if !status.is_success() {
+            panic!("Failed to get nonce: {}", body);
+        }
+    }
+
+    // 21st should fail
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let retry_after_header = response.headers().get("retry-after").cloned();
+    let body = response.text().await.unwrap();
+    if status != 429 {
+        panic!(
+            "Expected a 429 response, got: {} with body: \n{}",
+            status, body
+        );
+    }
+
+    // Remove any digits from the response.
+    let body = regex::Regex::new(r"\d+")
+        .unwrap()
+        .replace_all(&body, "REMOVED");
+
+    insta::assert_snapshot!(body);
+
+    // wait for the ratelimit to expire
+    let retry_after_header = retry_after_header.unwrap();
+    let retry_after_header = retry_after_header.to_str().unwrap();
+    let retry_after_header = retry_after_header.parse::<u64>().unwrap();
+    tokio::time::sleep(std::time::Duration::from_secs(retry_after_header + 1)).await;
+
+    // 7th should succeed
+    let response = reqwest::get(&format!("http://127.0.0.1:{}/api/v1/nonce", free_port))
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    if !status.is_success() {
+        panic!("Failed to get nonce: {}", body);
+    }
 
     started_server.disarm();
 }

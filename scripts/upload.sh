@@ -17,7 +17,7 @@ do_install=""
 
 # default to the env var if possible
 set +o nounset
-key="$SEND_SSH_KEY"
+key="$SEND_KEY"
 domain="$SEND_DOMAIN"
 set -o nounset
 
@@ -55,27 +55,26 @@ function do_install {
     chmod +x /usr/local/bin/send
     echo "Installed upload script to /usr/local/bin/send"
 
-    echo "Installing bash completion for send"
-    curl https://raw.githubusercontent.com/JosiahBull/send/main/scripts/completions/send-completion.bash > /etc/bash_completion.d/send
-    chmod +x /etc/bash_completion.d/send
-    echo "Installed bash completion for send"
-
     # if zsh on system, install zsh completion
     zsh_present=$(command -v zsh)
     if [ -n "$zsh_present" ]; then
         echo "Installing zsh completion for send"
+        mkdir -p /usr/share/zsh/site-functions
         curl https://raw.githubusercontent.com/JosiahBull/send/main/scripts/completions/_send > /usr/share/zsh/site-functions/_send
         chmod +x /usr/share/zsh/site-functions/_send
         echo "Installed zsh completion for send"
-    fi
 
-    # if fish on system, install fish completion
-    fish_present=$(command -v fish)
-    if [ -n "$fish_present" ]; then
-        echo "Installing fish completion for send"
-        curl https://raw.githubusercontent.com/JosiahBull/send/main/scripts/completions/send.fish > /usr/share/fish/vendor_completions.d/send.fish
-        chmod +x /usr/share/fish/vendor_completions.d/send.fish
-        echo "Installed fish completion for send"
+        # Check that /usr/share/zsh/site-functions is in the fpath
+        is_in_path=$(echo $fpath | grep -q "/usr/share/zsh/site-functions")
+        if [ -z "$is_in_path" ]; then
+            echo "You need to add /usr/share/zsh/site-functions to your fpath in your .zshrc"
+        fi
+
+        # Check that ~/.zshrc contains source /usr/share/zsh/site-functions/_send
+        zshrc_present=$(grep -q "source /usr/share/zsh/site-functions/_send" ~/.zshrc)
+        if [ -z "$zshrc_present" ]; then
+            echo "You need to add 'source /usr/share/zsh/site-functions/_send' to your .zshrc for completions."
+        fi
     fi
 
     # Let the user know that they can set env vars to avoid passing them in

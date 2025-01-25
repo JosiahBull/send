@@ -10,11 +10,12 @@ mod tracing_config;
 mod unique_ids;
 mod uploads;
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     body::Body,
     extract::{self, State},
+    middleware::Next,
     response::{Html, IntoResponse},
     routing::{any, get, post},
     Json, Router,
@@ -28,6 +29,7 @@ use reqwest::{
     Url,
 };
 use template::DownloadPageFields;
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use tower_http::compression::CompressionLayer;
 use unique_ids::UploadId;
 
@@ -178,7 +180,7 @@ async fn static_404() -> axum::http::Response<Body> {
     /// The static 404 response bytes.
     const RESPONSE_BYTES: &[u8] = include_bytes!("../static/404.html");
 
-    // build a resposne from the bytes and headers, with 404 status.
+    // build a response from the bytes and headers, with 404 status.
     axum::http::Response::builder()
         .status(axum::http::StatusCode::NOT_FOUND)
         .header("Content-Type", "text/html")
@@ -192,7 +194,7 @@ async fn static_robots_txt() -> axum::http::Response<Body> {
     /// The static robots.txt response bytes.
     const RESPONSE_BYTES: &str = "User-agent: *\nDisallow: /";
 
-    // build a resposne from the bytes and headers.
+    // build a response from the bytes and headers.
     axum::http::Response::builder()
         .status(axum::http::StatusCode::OK)
         .header("Content-Type", "text/plain")
@@ -221,31 +223,63 @@ const fn build_response_for_static_file(
     )
 }
 
-pub fn router(app_state: AppState) -> Router {
+pub fn router(
+    app_state: AppState,
+    rate_limit_config: config::RateLimitConfig,
+) -> extract::connect_info::IntoMakeServiceWithConnectInfo<Router, SocketAddr> {
+    let rate_limiter = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(rate_limit_config.duration_between_refill.as_secs())
+            .burst_size(rate_limit_config.bucket_size.get())
+            .finish()
+            .expect("To be valid config."),
+    );
+
     Router::new()
-        // TODO: setup rate limiting.
-        // TODO: setup logging.
         .nest("/api", {
-            Router::new()
-                .route("/health", get(|| async { "OK" }))
-                .nest("/v1", {
-                    Router::new()
-                        .route("/nonce", get(get_nonce))
-                        .route("/upload", post(upload))
-                })
+            Router::new().nest("/v1", {
+                Router::new()
+                    .route("/nonce", get(get_nonce))
+                    .route("/upload", post(upload))
+            })
         })
         // Download Routes
         .route("/{upload_id}", get(download_html))
         .route("/{upload_id}/file", get(download_stream))
-        // Homepage
-        .route(
-            "/",
-            get(|| async {
-                build_response_for_static_file(include_bytes!("../static/index.html"), "text/html")
-            }),
-        )
+        .layer(GovernorLayer {
+            config: rate_limiter,
+        })
+        .layer(axum::middleware::from_fn(
+            |socket_addr: axum::extract::ConnectInfo<SocketAddr>,
+             mut req: axum::extract::Request,
+             next: Next| async move {
+                let extensions = req.extensions_mut();
+                extensions.insert(socket_addr);
+                next.run(req).await
+            },
+        ))
+        // Only routes before this point will be rate limited.
+        .route("/api/health", get(|| async { "OK" }))
         // Static Resources
         .route("/robots.txt", get(static_robots_txt))
+        .route(
+            "/favicon-96x96.png",
+            get(|| async {
+                build_response_for_static_file(
+                    include_bytes!("../static/favicon-96x96.png"),
+                    "image/png",
+                )
+            }),
+        )
+        .route(
+            "/favicon.svg",
+            get(|| async {
+                build_response_for_static_file(
+                    include_bytes!("../static/favicon.svg"),
+                    "image/svg+xml",
+                )
+            }),
+        )
         .route(
             "/favicon.ico",
             get(|| async {
@@ -255,11 +289,24 @@ pub fn router(app_state: AppState) -> Router {
                 )
             }),
         )
-        // .route("/favicon-16x16.png", get(|| async { build_response_for_static_file(include_bytes!("../static/favicon-16x16.png"), "image/png") }))
-        // .route("/favicon-32x32.png", get(|| async { build_response_for_static_file(include_bytes!("../static/favicon-32x32.png"), "image/png") }))
-        // .route("/favicon-96x96.png", get(|| async { build_response_for_static_file(include_bytes!("../static/favicon-96x96.png"), "image/png") }))
-        // .route("/favicon-192x192.png", get(|| async { build_response_for_static_file(include_bytes!("../static/favicon-192x192.png"), "image/png") }))
-        // .route("/apple-touch-icon.png", get(|| async { build_response_for_static_file(include_bytes!("../static/apple-touch-icon.png"), "image/png") }))
+        .route(
+            "/apple-touch-icon.png",
+            get(|| async {
+                build_response_for_static_file(
+                    include_bytes!("../static/apple-touch-icon.png"),
+                    "image/png",
+                )
+            }),
+        )
+        .route(
+            "/site.webmanifest",
+            get(|| async {
+                build_response_for_static_file(
+                    include_bytes!("../static/site.webmanifest"),
+                    "application/manifest+json",
+                )
+            }),
+        )
         .route(
             "/styles.css",
             get(|| async {
@@ -298,6 +345,7 @@ pub fn router(app_state: AppState) -> Router {
                 .no_deflate()
                 .no_zstd(),
         )
+        .into_make_service_with_connect_info::<SocketAddr>()
 }
 
 #[tokio::main]
@@ -305,7 +353,6 @@ async fn main() {
     let build_info = build_info::BuildInfo::get_buildinfo();
     println!("{}", build_info);
 
-    // XXX: move this into a similar info module.
     let runtime = tokio::runtime::Handle::current();
     let num_threads = runtime.metrics().num_workers();
     println!("Number of threads: {}\n", num_threads);
@@ -371,7 +418,7 @@ async fn main() {
         url_base: config.server.domain,
     };
 
-    let app = router(app_state.clone());
+    let app = router(app_state.clone(), config.rate_limit);
 
     let listener =
         tokio::net::TcpListener::bind(format!("{}:{}", config.server.host, config.server.port))
@@ -401,7 +448,7 @@ async fn main() {
         .await
         .expect("Failed to start server");
 
-    // Attempt to gracefully shutdown all subcomponents on the server.
+    // Attempt to gracefully shutdown all sub-components on the server.
     let AppState {
         github_keys,
         uploads,
@@ -412,6 +459,7 @@ async fn main() {
     // Both should have 1 strong reference left, so we can safely drop them here.
     tracing::info!("Getting strong ref to github_keys and uploads");
     let (github_keys, uploads) = {
+        /// The maximum time to wait for the strong references to drop.
         const MAX_TIME_TO_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
         let now = std::time::Instant::now();
         loop {
@@ -429,12 +477,12 @@ async fn main() {
         }
     };
 
-    tracing::info!("Shutting down subcomponents");
+    tracing::info!("Shutting down sub-components");
     tokio::try_join!(
         github_keys.gracefully_shutdown(),
         uploads.gracefully_shutdown()
     )
-    .expect("Failed to gracefully shutdown subcomponents");
+    .expect("Failed to gracefully shutdown sub-components");
 
     // Flush the database connection and close it gracefully.
     tracing::info!("Shutting down database connection");

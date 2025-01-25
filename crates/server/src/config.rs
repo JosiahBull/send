@@ -1,6 +1,11 @@
 //! Handles configuration for the server, typically pulling from structured environment variables.
 
-use std::{collections::HashMap, net::Ipv4Addr, num::NonZeroU64, path::PathBuf};
+use std::{
+    collections::HashMap,
+    net::Ipv4Addr,
+    num::{NonZeroU32, NonZeroU64},
+    path::PathBuf,
+};
 
 use url::Url;
 
@@ -18,6 +23,8 @@ pub struct Config {
     pub upload: UploadConfig,
     /// Configuration for the auth module.
     pub auth: AuthConfig,
+    /// Configuration for rate limiting.
+    pub rate_limit: RateLimitConfig,
 }
 
 impl Config {
@@ -41,6 +48,7 @@ impl Config {
             database: DatabaseConfig::from_env(env)?,
             upload: UploadConfig::from_env(env)?,
             auth: AuthConfig::from_env(env)?,
+            rate_limit: RateLimitConfig::from_env(env)?,
         })
     }
 }
@@ -447,6 +455,88 @@ impl AuthConfig {
             max_number_of_keys_per_user,
             max_time_allowed_since_refresh,
             auth_keys,
+        })
+    }
+}
+
+/// Configuration for rate limiting.
+#[derive(Debug)]
+pub struct RateLimitConfig {
+    /// The size of the rate limit bucket.
+    /// [`NonZeroU32`] is due to internal limitation on variable size in rate limiting library.
+    pub bucket_size: NonZeroU32,
+    /// The duration to wait before adding 1 request to the bucket.
+    pub duration_between_refill: std::time::Duration,
+}
+
+impl RateLimitConfig {
+    /// Configuration for rate limiting.
+    ///
+    /// This struct provides the configuration for rate limiting, including the
+    /// bucket size and the duration between refills.
+    ///
+    /// # Methods
+    ///
+    /// - `from_env`: Constructs a `RateLimitConfig` from environment variables.
+    ///
+    /// # Environment Variables
+    ///
+    /// - `RATE_LIMIT__BUCKET_SIZE`: The size of the rate limit bucket.
+    /// - `RATE_LIMIT__REFILL_INTERVAL`: The duration between refills of the rate limit bucket.
+    ///
+    /// # Errors
+    ///
+    /// This function will return a `ServerError::MissingEnvVar` if any of the required
+    /// environment variables are missing or empty.
+    ///
+    /// # Examples
+    /// ```
+    /// let env = std::env::vars().collect::<HashMap<String, String>>();
+    /// # let mut env = env;
+    /// # env.insert("RATE_LIMIT__BUCKET_SIZE".to_string(), "100MB");
+    /// # env.insert("RATE_LIMIT__REFILL_INTERVAL".to_string(), "1h");
+    /// # let env = env;
+    /// let rate_limit_config = RateLimitConfig::from_env(&env).expect("Failed to load rate limit configuration");
+    /// println!("Bucket size: {}, Duration between refill: {:?}", rate_limit_config.bucket_size, rate_limit_config.duration_between_refill);
+    /// # assert_eq!(rate_limit_config.bucket_size, 100 * 1024 * 1024);
+    /// # assert_eq!(rate_limit_config.duration_between_refill, std::time::Duration::from_secs(60 * 60));
+    /// ```
+    pub fn from_env(env: &HashMap<String, String>) -> ServerResult<Self> {
+        let bucket_size: NonZeroU32 = env
+            .get("RATE_LIMIT__BUCKET_SIZE")
+            .and_then(|s| if s.is_empty() { None } else { Some(s) })
+            .ok_or_else(|| ServerError::MissingEnvVar("RATE_LIMIT__BUCKET_SIZE"))?
+            .parse::<u32>()
+            .map_err(|e| {
+                ServerError::InvalidEnvVar(
+                    "RATE_LIMIT__BUCKET_SIZE",
+                    env.get("RATE_LIMIT__BUCKET_SIZE")
+                        .expect("already checked to be present")
+                        .to_string(),
+                    e.to_string(),
+                )
+            })?
+            .try_into()
+            .map_err(|_| {
+                ServerError::InvalidEnvVar(
+                    "RATE_LIMIT__BUCKET_SIZE",
+                    env.get("RATE_LIMIT__BUCKET_SIZE")
+                        .expect("already checked to be present")
+                        .to_string(),
+                    "Size must be non-zero".to_string(),
+                )
+            })?;
+
+        let duration_between_refill = parse_time(
+            env.get("RATE_LIMIT__REFILL_INTERVAL")
+                .and_then(|s| if s.is_empty() { None } else { Some(s) })
+                .ok_or_else(|| ServerError::MissingEnvVar("RATE_LIMIT__REFILL_INTERVAL"))?,
+            "RATE_LIMIT__REFILL_INTERVAL",
+        )?;
+
+        Ok(Self {
+            bucket_size,
+            duration_between_refill,
         })
     }
 }
@@ -883,6 +973,87 @@ mod test_auth_config {
         assert_eq!(
             err.expect_err("Should fail due to base URL").to_string(),
             "Invalid environment variable: AUTH__AUTH_KEYS__*: (Url { scheme: \"file\", cannot_be_a_base: false, username: \"\", password: None, host: None, port: None, path: \"/user1.keys\", query: None, fragment: None }, \"username1\"), failed due to: Invalid URL"
+        );
+    }
+}
+
+#[cfg(test)]
+mod test_rate_limit_config {
+    use super::*;
+
+    fn base_valid_env() -> HashMap<String, String> {
+        let mut env = HashMap::new();
+        env.insert("RATE_LIMIT__BUCKET_SIZE".to_string(), "100".to_string());
+        env.insert("RATE_LIMIT__REFILL_INTERVAL".to_string(), "1h".to_string());
+        env
+    }
+
+    #[test]
+    fn test_rate_limit_config_from_env() {
+        let env = base_valid_env();
+        let RateLimitConfig {
+            bucket_size,
+            duration_between_refill,
+        } = RateLimitConfig::from_env(&env).expect("Failed to load RateLimitConfig");
+
+        assert_eq!(
+            bucket_size,
+            NonZeroU32::new(100).expect("Failed to create NonZeroU64")
+        );
+        assert_eq!(
+            duration_between_refill,
+            std::time::Duration::from_secs(60 * 60)
+        );
+    }
+
+    #[test]
+    fn test_invalid_rate_limit_bucket_size() {
+        let mut env = base_valid_env();
+        env.insert("RATE_LIMIT__BUCKET_SIZE".to_string(), "nan".to_string());
+
+        let err = RateLimitConfig::from_env(&env);
+
+        assert!(err.is_err());
+        assert_eq!(
+                err.expect_err("Should fail due to invalid bucket size").to_string(),
+                "Invalid environment variable: RATE_LIMIT__BUCKET_SIZE: nan, failed due to: invalid digit found in string"
+            );
+    }
+
+    #[test]
+    fn test_invalid_rate_limit_duration_between_refill() {
+        let mut env = base_valid_env();
+        env.insert(
+            "RATE_LIMIT__REFILL_INTERVAL".to_string(),
+            "invalid_duration".to_string(),
+        );
+
+        let err = RateLimitConfig::from_env(&env);
+
+        assert!(err.is_err());
+        assert_eq!(
+                err.expect_err("Should fail due to invalid duration").to_string(),
+                "Invalid environment variable: RATE_LIMIT__REFILL_INTERVAL: invalid_duration, failed due to: invalid digit found in string"
+            );
+    }
+
+    #[test]
+    fn test_rate_limit_duration_units() {
+        let mut env = base_valid_env();
+        env.insert("RATE_LIMIT__REFILL_INTERVAL".to_string(), "30m".to_string());
+        let rate_limit_config =
+            RateLimitConfig::from_env(&env).expect("Failed to load RateLimitConfig");
+        assert_eq!(
+            rate_limit_config.duration_between_refill,
+            std::time::Duration::from_secs(30 * 60)
+        );
+
+        env.insert("RATE_LIMIT__REFILL_INTERVAL".to_string(), "2h".to_string());
+        let rate_limit_config =
+            RateLimitConfig::from_env(&env).expect("Failed to load RateLimitConfig");
+        assert_eq!(
+            rate_limit_config.duration_between_refill,
+            std::time::Duration::from_secs(2 * 60 * 60)
         );
     }
 }
