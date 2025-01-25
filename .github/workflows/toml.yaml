@@ -21,6 +21,10 @@ env:
 jobs:
   cargo-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: toml-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
