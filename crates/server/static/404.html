@@ -1,1 +1,81 @@
-Not Found
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Homepage for the Send file transfer tool.">
+    <meta name="author" content="Josiah Bull">
+    <meta name="keywords" content="send, file, transfer, tool, share, large, files, fast, easy, secure">
+
+    <!-- This page follows the system setting for dark/light mode -->
+    <meta name="darkreader-lock">
+
+    <!-- Send OG headers to help this have a nice preview -->
+    <meta property="og:title" content="Send - File Transfer Tool">
+    <meta property="og:description"
+        content="Send is a file transfer tool that allows you to share large files quickly and easily.">
+    <meta property="og:image" content="https://send.josiahbull.com/static/images/og-image.png">
+    <meta property="og:url" content="https://send.josiahbull.com/">
+    <meta property="og:type" content="website">
+
+    <title>Send - File Transfer Tool</title>
+
+    <!-- All icons as required by the various platforms -->
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Send" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body data-theme="light">
+    <button class="theme-toggle" onclick="toggleTheme()">Light Mode</button>
+
+    <div class="container">
+        <div class="content">
+            <h1>404</h1>
+            <p>Page not found</p>
+            <a href="https://github.com/josiahbull/send" class="button">View on GitHub</a>
+        </div>
+    </div>
+
+    <script>
+        const themeToggle = document.querySelector('.theme-toggle');
+        const root = document.documentElement;
+
+        const themes = ['light', 'dark', 'auto'];
+        let currentTheme = localStorage.getItem('theme') || 'auto';
+
+        function setTheme(theme) {
+            if (theme === 'auto') {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                theme = prefersDark ? 'dark' : 'light';
+            }
+            document.body.setAttribute('data-theme', theme);
+            themeToggle.textContent = `${capitalize(currentTheme)} Mode`;
+            localStorage.setItem('theme', currentTheme);
+        }
+
+        function toggleTheme() {
+            const currentIndex = themes.indexOf(currentTheme);
+            currentTheme = themes[(currentIndex + 1) % themes.length];
+            setTheme(currentTheme);
+        }
+
+        function capitalize(word) {
+            return word.charAt(0).toUpperCase() + word.slice(1);
+        }
+
+        // Apply theme on page load
+        setTheme(currentTheme);
+
+        // Update theme if system setting changes and in Auto Mode
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (currentTheme === 'auto') setTheme('auto');
+        });
+    </script>
+</body>

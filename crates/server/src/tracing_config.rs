@@ -73,13 +73,13 @@ pub fn init_tracing() {
     // Filter the tracing layer - we can add custom filters that only impact the tracing layer
     let tracing_level_filter = tracing_subscriber::filter::Targets::new()
         .with_target(env!("CARGO_PKG_NAME"), tracing::Level::TRACE)
-        .with_target("sqlx", tracing::Level::TRACE)
-        .with_target("tower_http", tracing::Level::TRACE)
-        .with_target("hyper_util", tracing::Level::TRACE)
-        .with_target("h2", tracing::Level::TRACE)
+        .with_target("sqlx", tracing::Level::DEBUG)
+        .with_target("tower_http", tracing::Level::INFO)
+        .with_target("hyper_util", tracing::Level::INFO)
+        .with_target("h2", tracing::Level::WARN)
         // Note an optional feature flag crate sets this most important trace from tracing to info level
-        .with_target("otel::tracing", tracing::Level::TRACE)
-        .with_default(tracing::Level::TRACE);
+        .with_target("otel::tracing", tracing::Level::INFO)
+        .with_default(tracing::Level::INFO);
 
     // turn our OTLP pipeline into a tracing layer
     let tracing_opentelemetry_layer = tracing_opentelemetry::layer()

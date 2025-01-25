@@ -11,7 +11,6 @@ repos:
       - id: pretty-format-json
         args: ["--autofix"]
         exclude: ".devcontainer/devcontainer.json"
-      - id: requirements-txt-fixer
       - id: check-case-conflict
       - id: check-added-large-files
         args: [--maxkb=1000]

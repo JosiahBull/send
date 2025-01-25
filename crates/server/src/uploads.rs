@@ -379,6 +379,7 @@ impl Uploads {
         let file_path = self.cache_directory.join(file_name.to_string());
         let file = tokio::fs::File::create(&file_path).await?;
 
+        /// Handles the stream of bytes being uploaded.
         async fn handle_stream<T>(
             mut file: tokio::fs::File,
             mut upload_stream: T,
