@@ -83,7 +83,7 @@ tower-otel-http-metrics = { workspace = true, features = ["axum"] }
 itertools = { workspace = true }
 bon = { workspace = true }
 reqwest-tracing = { workspace = true, features = ["opentelemetry_0_27"] }
-tower_governor = { version = "0.6.0", features = ["tracing"] }
+tower_governor = { workspace = true, features = ["tracing"] }
 
 
 [dev-dependencies]

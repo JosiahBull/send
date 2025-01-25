@@ -32,7 +32,4 @@ If you would like to contribute to this project, please open an issue or a pull 
 
 ## License
 
-This project is licensed under the MIT License OR GPL-2 at your option.
-
-- MIT License: [LICENSE-MIT](LICENSE-MIT)
-- GPL-2 License: [LICENSE-GPL-2](LICENSE-GPLv2)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
