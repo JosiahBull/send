@@ -35,37 +35,37 @@ docker-build triple=(arch() + "-unknown-linux-musl"):
     # If the 'cross' binary does not exist - install it.
     if ! command -v cross &> /dev/null; then
         echo "cross not found, installing it now"
-        cargo install cross --locked --git https://github.com/cross-rs/cross
+        cargo install cross --locked --quiet --git https://github.com/cross-rs/cross
     fi
 
     # extract the arch from the triple
-    arch=$(echo $triple | cut -d'-' -f1)
+    arch=$(echo {{triple}} | cut -d'-' -f1)
     platform="linux/$arch"
 
     # Set the target
     echo "Docker Version: $(docker --version)"
     echo "Docker buildx version: $(docker buildx version)"
-    echo "target: $triple"
+    echo "target: {{triple}}"
     echo "platform: $platform"
     echo "repo: {{repo}}"
 
     # Build the project
-    CROSS_CONTAINER_IN_CONTAINER=true \
+    CROSS_CONTAINER_IN_CONTAINER=${CROSS_CONTAINER_IN_CONTAINER:-true}
     cross build \
         --release \
-        --target $triple
+        --target {{triple}}
 
     # Copy the built file to ./target/tmp/server
     mkdir -p ./target/tmp
     rm -f ./target/tmp/server
-    cp ./target/$triple/release/server ./target/tmp/server
+    cp ./target/{{triple}}/release/server ./target/tmp/server
 
     # Create the docker project
     docker buildx build \
         --platform $platform \
         --file ./Dockerfile \
-        --tag "{{repo}}:$triple-$(git rev-parse --short HEAD)" \
-        --tag "{{repo}}:$triple-latest" \
+        --tag "{{repo}}:{{triple}}-$(git rev-parse --short HEAD)" \
+        --tag "{{repo}}:{{triple}}-latest" \
         --load \
         .
 
@@ -74,8 +74,8 @@ docker-push triple=(arch() + "-unknown-linux-musl"):
 
     set -o errexit -o nounset -o pipefail
 
-    docker push {{repo}}:$triple-$(git rev-parse --short HEAD)
-    docker push {{repo}}:$triple-latest
+    docker push {{repo}}:{{triple}}-$(git rev-parse --short HEAD)
+    docker push {{repo}}:{{triple}}-latest
 
 docker-manifest triples=(arch() + "-unknown-linux-musl"):
     #!/bin/bash
