@@ -24,7 +24,7 @@ update-snapshots:
     @cargo insta accept
 
 # Build the project & Create dockerfiles for the desired triple
-docker-build triples=(arch() + "-unknown-linux-musl"):
+docker-build triple=(arch() + "-unknown-linux-musl"):
     #!/bin/bash
 
     set -o errexit -o nounset -o pipefail
@@ -38,49 +38,44 @@ docker-build triples=(arch() + "-unknown-linux-musl"):
         cargo install cross --locked --git https://github.com/cross-rs/cross
     fi
 
-    # Build the project for each triple
-    for triple in {{triples}}; do
-        # extract the arch from the triple
-        arch=$(echo $triple | cut -d'-' -f1)
-        platform="linux/$arch"
+    # extract the arch from the triple
+    arch=$(echo $triple | cut -d'-' -f1)
+    platform="linux/$arch"
 
-        # Set the target
-        echo "Docker Version: $(docker --version)"
-        echo "Docker buildx version: $(docker buildx version)"
-        echo "target: $triple"
-        echo "platform: $platform"
-        echo "repo: {{repo}}"
+    # Set the target
+    echo "Docker Version: $(docker --version)"
+    echo "Docker buildx version: $(docker buildx version)"
+    echo "target: $triple"
+    echo "platform: $platform"
+    echo "repo: {{repo}}"
 
-        # Build the project
-        CROSS_CONTAINER_IN_CONTAINER=true \
-        cross build \
-            --release \
-            --target $triple
+    # Build the project
+    CROSS_CONTAINER_IN_CONTAINER=true \
+    cross build \
+        --release \
+        --target $triple
 
-        # Copy the built file to ./target/tmp/server
-        mkdir -p ./target/tmp
-        rm -f ./target/tmp/server
-        cp ./target/$triple/release/server ./target/tmp/server
+    # Copy the built file to ./target/tmp/server
+    mkdir -p ./target/tmp
+    rm -f ./target/tmp/server
+    cp ./target/$triple/release/server ./target/tmp/server
 
-        # Create the docker project
-        docker buildx build \
-            --platform $platform \
-            --file ./Dockerfile \
-            --tag "{{repo}}:$triple-$(git rev-parse --short HEAD)" \
-            --tag "{{repo}}:$triple-latest" \
-            --load \
-            .
-    done
+    # Create the docker project
+    docker buildx build \
+        --platform $platform \
+        --file ./Dockerfile \
+        --tag "{{repo}}:$triple-$(git rev-parse --short HEAD)" \
+        --tag "{{repo}}:$triple-latest" \
+        --load \
+        .
 
-docker-push triples=(arch() + "-unknown-linux-musl"):
+docker-push triple=(arch() + "-unknown-linux-musl"):
     #!/bin/bash
 
     set -o errexit -o nounset -o pipefail
 
-    for triple in {{triples}}; do
-        docker push {{repo}}:$triple-$(git rev-parse --short HEAD)
-        docker push {{repo}}:$triple-latest
-    done
+    docker push {{repo}}:$triple-$(git rev-parse --short HEAD)
+    docker push {{repo}}:$triple-latest
 
 docker-manifest triples=(arch() + "-unknown-linux-musl"):
     #!/bin/bash
