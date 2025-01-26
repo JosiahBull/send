@@ -8,6 +8,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  CROSS_CONTAINER_IN_CONTAINER: false
   ACT:
 
 jobs:
@@ -70,6 +71,10 @@ jobs:
           just docker-push "aarch64-unknown-linux-musl"
 
   create_manifest:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     needs: [build_arm64, build_amd64]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -78,6 +83,7 @@ jobs:
       cancel-in-progress: true
 
     steps:
+      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - uses: taiki-e/install-action@just
       - name: Log in to the Container registry
