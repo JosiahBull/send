@@ -177,8 +177,9 @@ impl UploadId {
         }
 
         let id = {
-            let mut rng = rand::thread_rng();
-            let distribution = rand::distributions::Uniform::new(0, GEN_ALPHABET.len());
+            let mut rng = rand::rng();
+            let distribution = rand::distr::Uniform::new(0, GEN_ALPHABET.len())
+                .expect("GEN_ALPHABET is non-empty.");
 
             debug_assert!(!GEN_ALPHABET.contains(&'z'), "z is used as a end stop representation in this loop, and cannot exist in the GEN_ALPHABET.");
 
@@ -422,11 +423,11 @@ mod tests {
     )]
     #[test]
     fn fuzz_gen_alphabet_strings() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..100_000_u64 {
             // Generate a random string of characters from 2 to 25 characters long.
-            let string = (0..rng.gen_range(2..25))
-                .map(|_| GEN_ALPHABET[rng.gen_range(0..GEN_ALPHABET.len())])
+            let string = (0..rng.random_range(2..25))
+                .map(|_| GEN_ALPHABET[rng.random_range(0..GEN_ALPHABET.len())])
                 .collect::<String>();
 
             // Try and decode it - should not panic.
@@ -437,11 +438,11 @@ mod tests {
     #[allow(unused_must_use, reason = "It's a test, bro.")]
     #[test]
     fn fuzz_random_strings() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..100_000_u64 {
             // Generate a random string of characters from 2 to 25 characters long.
-            let string = (0..rng.gen_range(2..25))
-                .map(|_| rng.gen_range(0..=255) as u8 as char)
+            let string = (0..rng.random_range(2..25))
+                .map(|_| rng.random_range(0..=255) as u8 as char)
                 .collect::<String>();
 
             // Try and decode it - should not panic.
