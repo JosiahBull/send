@@ -388,7 +388,7 @@ impl GithubKeys {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub async fn generate_nonce(&self) -> String {
         let data = {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let mut data = [0_u8; NONCE_LENGTH];
             rng.fill_bytes(&mut data);
             data
