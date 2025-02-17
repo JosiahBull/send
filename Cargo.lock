@@ -515,7 +515,7 @@ dependencies = [
  "tower 0.5.2",
  "tracing",
  "tracing-opentelemetry 0.29.0",
- "tracing-opentelemetry-instrumentation-sdk 0.26.0",
+ "tracing-opentelemetry-instrumentation-sdk",
 ]
 
 [[package]]
@@ -3615,7 +3615,6 @@ dependencies = [
  "tower_governor",
  "tracing",
  "tracing-opentelemetry 0.28.0",
- "tracing-opentelemetry-instrumentation-sdk 0.24.2",
  "tracing-subscriber",
  "tracing-test",
  "url",
@@ -4537,17 +4536,6 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "web-time",
-]
-
-[[package]]
-name = "tracing-opentelemetry-instrumentation-sdk"
-version = "0.24.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cf359b8862d097418bc1a3edd0ab8a1700dc155258557195b29d96fde14c5a8"
-dependencies = [
- "opentelemetry 0.27.1",
- "tracing",
- "tracing-opentelemetry 0.28.0",
 ]
 
 [[package]]
