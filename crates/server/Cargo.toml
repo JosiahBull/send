@@ -75,9 +75,6 @@ opentelemetry_sdk = { workspace = true, features = [
 tracing-opentelemetry = { workspace = true, features = ["async-trait"] }
 reqwest-middleware = { workspace = true, features = ["json"] }
 axum-tracing-opentelemetry = { workspace = true }
-tracing-opentelemetry-instrumentation-sdk = { workspace = true, features = [
-    "tracing_level_info",
-] }
 opentelemetry-appender-tracing = { workspace = true }
 tower-otel-http-metrics = { workspace = true, features = ["axum"] }
 itertools = { workspace = true }
