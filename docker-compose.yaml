@@ -12,7 +12,7 @@ services:
       - ./data:/data
 
   telemetry:
-    image: grafana/otel-lgtm:0.8.5
+    image: grafana/otel-lgtm:0.8.6
     healthcheck:
       test: ["CMD", "cat", "/tmp/ready"]
       timeout: 30s
