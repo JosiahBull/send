@@ -1,12 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "assignees": [
-    "josiahbull"
-  ],
+  "assignees": [],
+  "assigneesFromCodeOwners": true,
   "automerge": true,
   "extends": [
     "config:recommended"
   ],
+  "labels": [
+    "dependencies"
+  ],
+  "onboarding": false,
   "packageRules": [
     {
       "automerge": true,
@@ -32,8 +35,28 @@
       "schedule": [
         "at 00:00 on the first day of the month"
       ]
+    },
+    {
+      "automerge": true,
+      "groupName": "semi-annual",
+      "matchPackageNames": [
+        "*telemetry*",
+        "otel"
+      ],
+      "minimumReleaseAge": "180 days",
+      "schedule": [
+        "at 00:00 on the first day of January and July"
+      ]
     }
   ],
+  "prBodyNotes": [
+    "Assigning @josiahbull if tests fail."
+  ],
+  "prBodyNotesWhen": {
+    "statusCheckFail": true
+  },
+  "prConcurrentLimit": 0,
+  "prCreation": "not-pending",
   "pre-commit": {
     "enabled": true
   }

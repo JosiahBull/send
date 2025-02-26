@@ -24,6 +24,7 @@ use axum_extra::{headers, TypedHeader};
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use error::{ServerError, ServerResult};
 use futures::TryStreamExt;
+use opentelemetry::trace::noop::NoopTracerProvider;
 use reqwest::{
     header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, EXPIRES},
     Url,
@@ -489,7 +490,7 @@ async fn main() {
     db_pool.close().await;
 
     tracing::info!("Shutting down OTEL providers");
-    opentelemetry::global::shutdown_tracer_provider();
+    opentelemetry::global::set_tracer_provider(NoopTracerProvider::default());
 
     // XXX: wait for flush + shutdown of all OTEL providers... currently not possible due to bug in
     // OTEL which doesn't close all resources.

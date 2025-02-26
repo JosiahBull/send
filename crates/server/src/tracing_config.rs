@@ -2,45 +2,21 @@
 //! handled here.
 
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::{LogExporter, WithExportConfig};
-use opentelemetry_sdk::logs::LoggerProvider;
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_otlp::LogExporter;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Layer;
 
 use crate::error::ServerResult;
 
-/// Initialize the meter provider for metrics.
-fn init_meter_provider(
-) -> Result<opentelemetry_sdk::metrics::SdkMeterProvider, opentelemetry_sdk::metrics::MetricError> {
-    let exporter = opentelemetry_otlp::MetricExporter::builder()
-        .with_tonic()
-        .with_timeout(std::time::Duration::from_secs(10))
-        .build()?;
-
-    let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
-
-    let provider = SdkMeterProvider::builder()
-        .with_reader(reader)
-        .with_resource(opentelemetry_sdk::Resource::default())
-        .with_resource(opentelemetry_sdk::Resource::new(vec![
-            opentelemetry::KeyValue::new("service.name", env!("CARGO_PKG_NAME")),
-        ]))
-        .build();
-
-    opentelemetry::global::set_meter_provider(provider.clone());
-
-    Ok(provider)
-}
-
 /// Initialize the logger provider for logs.
-fn init_logger_provider() -> ServerResult<opentelemetry_sdk::logs::LoggerProvider> {
+fn init_logger_provider() -> ServerResult<SdkLoggerProvider> {
     // Note Opentelemetry does not provide a global API to manage the logger provider.
-    let exporter = LogExporter::builder().with_tonic().build()?;
+    let exporter = LogExporter::builder().with_http().build()?;
 
-    let provider = LoggerProvider::builder()
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+    let provider = SdkLoggerProvider::builder()
+        .with_batch_exporter(exporter)
         .build();
 
     Ok(provider)
@@ -50,20 +26,16 @@ fn init_logger_provider() -> ServerResult<opentelemetry_sdk::logs::LoggerProvide
 pub fn init_tracing() {
     opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
-    // Metrics
-    let meter_provider = init_meter_provider().expect("Failed to create meter provider");
-    let opentelemetry_metrics_layer = tracing_opentelemetry::MetricsLayer::new(meter_provider);
-
     // Tracing
     // Uses OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
     // Assumes a GRPC endpoint (e.g port 4317)
     let exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
+        .with_http()
         .build()
         .expect("Failed to create OTLP exporter");
 
-    let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+    let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
         //.with_resource(opentelemetry_sdk::Resource::default())
         .build();
 
@@ -129,7 +101,6 @@ pub fn init_tracing() {
         //         .spawn(),
         // )
         .with(otel_log_layer)
-        .with(opentelemetry_metrics_layer)
         .with(tracing_opentelemetry_layer)
         .with(fmt_layer.with_filter(tracing_subscriber::EnvFilter::from_default_env()));
 
