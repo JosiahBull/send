@@ -356,7 +356,6 @@ checksum = "edca88bc138befd0323b20752846e6587272d3b03b0343c8ea28a6f819e6e71f"
 dependencies = [
  "async-trait",
  "axum-core 0.4.5",
- "axum-macros 0.4.2",
  "bytes",
  "futures-util",
  "http 1.2.0",
@@ -383,7 +382,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efea76243612a2436fb4074ba0cf3ba9ea29efdeb72645d8fc63f116462be1de"
 dependencies = [
  "axum-core 0.5.1",
- "axum-macros 0.5.0",
+ "axum-macros",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -460,7 +459,7 @@ checksum = "543f0799d22486525744f06a3580b64f3e51d97aba73ea0e09040969c0034722"
 dependencies = [
  "axum 0.8.2",
  "axum-core 0.5.1",
- "axum-macros 0.5.0",
+ "axum-macros",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -476,17 +475,6 @@ dependencies = [
  "tower 0.5.2",
  "tower-layer",
  "tower-service",
-]
-
-[[package]]
-name = "axum-macros"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57d123550fa8d071b7255cb0cc04dc302baa6c8c4a79f55701552684d8399bce"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.96",
 ]
 
 [[package]]
@@ -4421,14 +4409,14 @@ checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
 
 [[package]]
 name = "tower-otel-http-metrics"
-version = "0.10.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed0ba983713ec0f5d512dc28091fa3c1cb8fa5487de32a1b0bc0cb4159f9f89f"
+checksum = "3f4dcc7efb74ed8d70a1bc72652f07286e9c2fb104ea8be08edd10994499a231"
 dependencies = [
- "axum 0.7.9",
+ "axum 0.8.2",
  "futures-util",
  "http 1.2.0",
- "opentelemetry 0.27.1",
+ "opentelemetry 0.28.0",
  "pin-project-lite",
  "tower 0.5.2",
  "tower-layer",
@@ -4960,7 +4948,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
