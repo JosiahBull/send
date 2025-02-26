@@ -7,16 +7,30 @@
   "extends": [
     "config:recommended"
   ],
-  "major": {
-    "automerge": true,
-    "minimumReleaseAge": "90 days"
-  },
   "packageRules": [
     {
       "automerge": true,
-      "minimumReleaseAge": "90 days",
+      "groupName": "monthly",
       "matchPackageNames": [
         "/^0\\./"
+      ],
+      "minimumReleaseAge": "30 days",
+      "schedule": [
+        "at 00:00 on the first day of the month"
+      ]
+    },
+    {
+      "automerge": true,
+      "groupName": "major-monthly",
+      "matchPackageNames": [
+        "/^0\\./"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "minimumReleaseAge": "90 days",
+      "schedule": [
+        "at 00:00 on the first day of the month"
       ]
     }
   ],
