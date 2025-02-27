@@ -2,7 +2,7 @@
 //! handled here.
 
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::LogExporter;
+use opentelemetry_otlp::{LogExporter, SpanExporter};
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tracing_subscriber::layer::SubscriberExt;
@@ -13,10 +13,8 @@ use crate::error::ServerResult;
 /// Initialize the logger provider for logs.
 fn init_logger_provider() -> ServerResult<SdkLoggerProvider> {
     // Note Opentelemetry does not provide a global API to manage the logger provider.
-    let exporter = LogExporter::builder().with_http().build()?;
-
     let provider = SdkLoggerProvider::builder()
-        .with_batch_exporter(exporter)
+        .with_batch_exporter(LogExporter::builder().with_tonic().build()?)
         .build();
 
     Ok(provider)
@@ -29,8 +27,8 @@ pub fn init_tracing() {
     // Tracing
     // Uses OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
     // Assumes a GRPC endpoint (e.g port 4317)
-    let exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_http()
+    let exporter = SpanExporter::builder()
+        .with_tonic()
         .build()
         .expect("Failed to create OTLP exporter");
 
