@@ -67,6 +67,7 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true, features = [
     "serialize",
     "reqwest-client",
+    "grpc-tonic"
 ] }
 opentelemetry_sdk = { workspace = true, features = [
     "trace",
