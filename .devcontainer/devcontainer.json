@@ -36,15 +36,15 @@
 	},
 	"mounts": [
 		// Mount the gpg key for signing commits
-		"source=${env:HOME}/.gnupg,target=/root/.gnupg,type=bind,consistency=cached",
+		"source=${localEnv:HOME}/.gnupg,target=/root/.gnupg,type=bind,readonly=true",
 		// Mount the ssh keys for git
-		"source=${env:HOME}/.ssh,target=/root/.ssh,type=bind,consistency=cached",
+		"source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,readonly=true",
 		// Mout the gitconfig for git
-		"source=${env:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,consistency=cached,readonly=false",
+		"source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,consistency=cached,readonly=false",
 		// Mount zsh_history
-		"source=${env:HOME}/.zsh_history,target=/root/.zsh_history,type=bind,consistency=cached,readonly=false",
+		"source=${localEnv:HOME}/.zsh_history,target=/root/.zsh_history,type=bind,consistency=cached,readonly=false",
 		// Mount bash_history
-		"source=${env:HOME}/.bash_history,target=/root/.bash_history,type=bind,consistency=cached,readonly=false",
+		"source=${localEnv:HOME}/.bash_history,target=/root/.bash_history,type=bind,consistency=cached,readonly=false",
 		// Mount the docker socket for most unix-like systems
 		"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind,consistency=cached,readonly=false"
 	],
