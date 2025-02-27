@@ -6,7 +6,6 @@
   "extends": [
     "config:recommended"
   ],
-  "onboarding": false,
   "packageRules": [
     {
       "automerge": true,
@@ -46,14 +45,6 @@
       ]
     }
   ],
-  "prBodyNotes": [
-    "Assigning @josiahbull if tests fail."
-  ],
-  "prBodyNotesWhen": {
-    "statusCheckFail": true
-  },
-  "prConcurrentLimit": 0,
-  "prCreation": "not-pending",
   "pre-commit": {
     "enabled": true
   }
