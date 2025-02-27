@@ -40,6 +40,10 @@ RUN echo \
 RUN apt-get update
 RUN apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+# Install python tools.
+RUN pip3 install thefuck
+RUN pip3 install pre-commit
+
 # Set the shell to zsh
 RUN chsh -s /bin/zsh
 SHELL ["/bin/zsh", "-c"]
