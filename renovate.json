@@ -1,13 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "assignees": [],
-  "assigneesFromCodeOwners": true,
-  "automerge": true,
+  "assignees": [
+    "josiahbull"
+  ],
   "extends": [
     "config:recommended"
-  ],
-  "labels": [
-    "dependencies"
   ],
   "onboarding": false,
   "packageRules": [
