@@ -3,6 +3,7 @@
   "assignees": [
     "josiahbull"
   ],
+  "automergeType": "branch",
   "extends": [
     "config:recommended"
   ],
@@ -10,8 +11,15 @@
     {
       "automerge": true,
       "groupName": "monthly",
-      "matchPackageNames": [
-        "/^0\\./"
+      "matchUpdateTypes": [
+        "bump",
+        "digest",
+        "lockFileMaintenance",
+        "minor",
+        "patch",
+        "pin",
+        "pinDigest",
+        "replacement"
       ],
       "minimumReleaseAge": "30 days",
       "schedule": [
@@ -21,9 +29,6 @@
     {
       "automerge": true,
       "groupName": "major-monthly",
-      "matchPackageNames": [
-        "/^0\\./"
-      ],
       "matchUpdateTypes": [
         "major"
       ],
@@ -37,15 +42,12 @@
       "groupName": "semi-annual",
       "matchPackageNames": [
         "*telemetry*",
-        "otel"
+        "*otel*"
       ],
       "minimumReleaseAge": "180 days",
       "schedule": [
         "at 00:00 on the first day of January and July"
       ]
     }
-  ],
-  "pre-commit": {
-    "enabled": true
-  }
+  ]
 }
