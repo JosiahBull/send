@@ -52,7 +52,7 @@ vergen = "9.0.4"
 vergen-gitcl = "1.0.5"
 libc = "0.2.169"
 reqwest-tracing = "0.5.5"
-rstest = "0.24.0"
+rstest = "0.25.0"
 tower_governor = "0.6.0"
 
 # Insta recommends compiling with optimizations It takes longer on initial compile, but makes test
