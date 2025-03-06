@@ -35,12 +35,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
-          components: rustfmt, clippy
-      - uses: dtolnay/rust-toolchain@master
-        with:
           toolchain: nightly
           components: rustfmt
+      - name: Rustfmt
+        run: cargo +nightly fmt --all -- --check
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
       - name: Show Cargo and rustc version
         run: |
           cargo --version
@@ -53,8 +55,6 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Rustfmt
-        run: cargo +nightly fmt --all -- --check
 
       # Use cargo tree, and fail if openssl is present
       - name: Check openssl
