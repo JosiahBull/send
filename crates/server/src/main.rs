@@ -7,32 +7,31 @@ mod error;
 mod extractors;
 mod template;
 mod tracing_config;
-mod unique_ids;
 mod uploads;
 
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
+    Json, Router,
     body::Body,
     extract::{self, State},
     middleware::Next,
     response::{Html, IntoResponse},
     routing::{any, get, post},
-    Json, Router,
 };
-use axum_extra::{headers, TypedHeader};
+use axum_extra::{TypedHeader, headers};
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use error::{ServerError, ServerResult};
 use futures::TryStreamExt;
+use human_friendly_ids::UploadId;
 use opentelemetry::trace::noop::NoopTracerProvider;
 use reqwest::{
-    header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, EXPIRES},
     Url,
+    header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, EXPIRES},
 };
 use template::DownloadPageFields;
-use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::compression::CompressionLayer;
-use unique_ids::UploadId;
 
 /// Global state shared for all requests.
 #[derive(Debug, Clone)]
@@ -363,7 +362,12 @@ async fn main() {
 
     println!("{:#?}", config);
 
-    tracing_config::init_tracing();
+    // Only initialise tracing if OTEL_EXPORTER_OTLP_ENDPOINT is set.
+    if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
+        tracing_config::init_tracing();
+    } else {
+        tracing::info!("Tracing disabled, set OTEL_EXPORTER_OTLP_ENDPOINT to enable.");
+    }
 
     let db_pool = sqlx::SqlitePool::connect(&config.database.url)
         .await

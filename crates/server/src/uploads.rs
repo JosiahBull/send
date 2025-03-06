@@ -4,20 +4,19 @@
 use std::{
     num::NonZeroU64,
     path::PathBuf,
-    sync::{atomic::AtomicU64, Arc},
+    sync::{Arc, atomic::AtomicU64},
 };
 
 use async_stream::stream;
 use bon::bon;
 use database::Upload;
 use futures::{Stream, StreamExt};
+use human_friendly_ids::{UploadId, UploadIdDist};
+use rand::distr::Distribution;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::Instrument;
 
-use crate::{
-    error::{ServerError, ServerResult},
-    unique_ids::UploadId,
-};
+use crate::error::{ServerError, ServerResult};
 
 /// An abstraction for managing the lifetime of file uploads.
 #[derive(Debug)]
@@ -286,7 +285,7 @@ impl Uploads {
         /// How long the file should be stored for.
         expiry: std::time::Duration,
     ) -> ServerResult<UploadId> {
-        let upload_id = UploadId::generate::<8>();
+        let upload_id = UploadIdDist::<8>.sample(&mut rand::rng());
 
         if file_size > self.max_allowed_file_size {
             return Err(ServerError::FileTooBig);
@@ -477,7 +476,7 @@ impl Uploads {
     pub async fn download(
         &self,
         key: UploadId,
-    ) -> ServerResult<(Upload, impl Stream<Item = ServerResult<Vec<u8>>>)> {
+    ) -> ServerResult<(Upload, impl Stream<Item = ServerResult<Vec<u8>>> + use<>)> {
         let upload = self.info(key).await?;
 
         if upload.uploaded_at.is_none() {

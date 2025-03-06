@@ -1,7 +1,7 @@
 [package]
 name = "server"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 authors = ["Josiah Bull <josiah.bull7@gmail.com>"]
 description = "A server to handle secure transmission of files over the web."
@@ -10,6 +10,7 @@ repository = "https://github.com/josiahbull/send"
 
 [dependencies]
 database.workspace = true
+human-friendly-ids = { workspace = true, features = ["serde"] }
 
 # TODO: sort dependencies
 # TODO: prune dependencies
@@ -78,7 +79,6 @@ reqwest-middleware = { workspace = true, features = ["json"] }
 axum-tracing-opentelemetry = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
 tower-otel-http-metrics = { workspace = true, features = ["axum"] }
-itertools = { workspace = true }
 bon = { workspace = true }
 reqwest-tracing = { workspace = true, features = ["opentelemetry_0_27"] }
 tower_governor = { workspace = true, features = ["tracing"] }
@@ -96,6 +96,7 @@ predicates = { workspace = true }
 regex = { workspace = true }
 libc = { workspace = true }
 rstest = { workspace = true }
+itertools = { workspace = true }
 
 [build-dependencies]
 vergen = { workspace = true, features = ["build", "cargo", "rustc", "si"] }

@@ -1,0 +1,19 @@
+[package]
+name = "human-friendly-ids"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+rand = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

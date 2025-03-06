@@ -13,7 +13,7 @@ use base64::Engine;
 use bon::bon;
 use rand::RngCore;
 use reqwest::Url;
-use ssh_key::{public::KeyData, PublicKey, SshSig};
+use ssh_key::{PublicKey, SshSig, public::KeyData};
 use tokio::sync::RwLock;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
@@ -476,8 +476,8 @@ mod tests {
     use httpmock::MockServer;
     use itertools::Itertools;
     use ssh_key::{
-        private::{Ed25519Keypair, KeypairData},
         HashAlg, PrivateKey,
+        private::{Ed25519Keypair, KeypairData},
     };
     use tracing_test::traced_test;
 
@@ -643,7 +643,7 @@ mod tests {
     #[test]
     fn test_decode_credentials() {
         let header_value = axum::http::HeaderValue::from_static(
-            "SshSig eyJub25jZSI6ImgvOC9jSldvaWdJZzlKYkdCSUZuWjhtWXJENjk0QlFHL0dSS09WS2p5ZTQ9Iiwic2lnbmF0dXJlIjoiLS0tLS1CRUdJTiBTU0ggU0lHTkFUVVJFLS0tLS1VMU5JVTBsSEFBQUFBUUFBQURNQUFBQUxjM05vTFdWa01qVTFNVGtBQUFBZ3RxdGJmK1dDbU16ZlFVQ0JndEozcUwvWUlUZTBSbmpnN3ViWkRvUkxOdjBBQUFBRVptbHNaUUFBQUFBQUFBQUdjMmhoTlRFeUFBQUFVd0FBQUF0emMyZ3RaV1F5TlRVeE9RQUFBRURyZ1JnOHRFc0xIQ3NtQmx1RGd6MUpLaFRGNitablpFa1RzQmdxYmZHQjMzM2VVMU4wVFZYUXhpV1dVeWV0cjlIL1hocmxEM0NlNk42K0xiUFJrYklJLS0tLS1FTkQgU1NIIFNJR05BVFVSRS0tLS0tIn0="
+            "SshSig eyJub25jZSI6ImgvOC9jSldvaWdJZzlKYkdCSUZuWjhtWXJENjk0QlFHL0dSS09WS2p5ZTQ9Iiwic2lnbmF0dXJlIjoiLS0tLS1CRUdJTiBTU0ggU0lHTkFUVVJFLS0tLS1VMU5JVTBsSEFBQUFBUUFBQURNQUFBQUxjM05vTFdWa01qVTFNVGtBQUFBZ3RxdGJmK1dDbU16ZlFVQ0JndEozcUwvWUlUZTBSbmpnN3ViWkRvUkxOdjBBQUFBRVptbHNaUUFBQUFBQUFBQUdjMmhoTlRFeUFBQUFVd0FBQUF0emMyZ3RaV1F5TlRVeE9RQUFBRURyZ1JnOHRFc0xIQ3NtQmx1RGd6MUpLaFRGNitablpFa1RzQmdxYmZHQjMzM2VVMU4wVFZYUXhpV1dVeWV0cjlIL1hocmxEM0NlNk42K0xiUFJrYklJLS0tLS1FTkQgU1NIIFNJR05BVFVSRS0tLS0tIn0=",
         );
 
         let credentials =

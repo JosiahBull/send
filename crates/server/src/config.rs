@@ -680,7 +680,8 @@ mod test_server_config {
 
         assert!(err.is_err());
         assert_eq!(
-            err.expect_err("Should fail due to invalid host").to_string(),
+            err.expect_err("Should fail due to invalid host")
+                .to_string(),
             "Invalid environment variable: SERVER__HOST: invalid_host, failed due to: invalid IPv4 address syntax"
         );
     }
@@ -694,7 +695,8 @@ mod test_server_config {
 
         assert!(err.is_err());
         assert_eq!(
-            err.expect_err("Should valid due to invalid port").to_string(),
+            err.expect_err("Should valid due to invalid port")
+                .to_string(),
             "Invalid environment variable: SERVER__PORT: invalid_port, failed due to: invalid digit found in string"
         );
     }
@@ -957,7 +959,8 @@ mod test_auth_config {
 
         assert!(err.is_err());
         assert_eq!(
-            err.expect_err("Should fail due to missing scheme").to_string(),
+            err.expect_err("Should fail due to missing scheme")
+                .to_string(),
             "Invalid environment variable: AUTH__AUTH_KEYS__*: www.example.com/user1.keys, failed due to: relative URL without a base"
         );
     }
@@ -1015,9 +1018,10 @@ mod test_rate_limit_config {
 
         assert!(err.is_err());
         assert_eq!(
-                err.expect_err("Should fail due to invalid bucket size").to_string(),
-                "Invalid environment variable: RATE_LIMIT__BUCKET_SIZE: nan, failed due to: invalid digit found in string"
-            );
+            err.expect_err("Should fail due to invalid bucket size")
+                .to_string(),
+            "Invalid environment variable: RATE_LIMIT__BUCKET_SIZE: nan, failed due to: invalid digit found in string"
+        );
     }
 
     #[test]
@@ -1032,9 +1036,10 @@ mod test_rate_limit_config {
 
         assert!(err.is_err());
         assert_eq!(
-                err.expect_err("Should fail due to invalid duration").to_string(),
-                "Invalid environment variable: RATE_LIMIT__REFILL_INTERVAL: invalid_duration, failed due to: invalid digit found in string"
-            );
+            err.expect_err("Should fail due to invalid duration")
+                .to_string(),
+            "Invalid environment variable: RATE_LIMIT__REFILL_INTERVAL: invalid_duration, failed due to: invalid digit found in string"
+        );
     }
 
     #[test]

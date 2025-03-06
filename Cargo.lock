@@ -1759,6 +1759,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "human-friendly-ids"
+version = "0.0.0"
+dependencies = [
+ "rand 0.9.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.11",
+]
+
+[[package]]
 name = "hyper"
 version = "0.14.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3574,6 +3584,7 @@ dependencies = [
  "futures",
  "handlebars",
  "httpmock",
+ "human-friendly-ids",
  "indexmap 2.7.1",
  "insta",
  "itertools 0.14.0",

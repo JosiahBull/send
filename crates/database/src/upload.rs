@@ -6,7 +6,7 @@ use std::num::NonZeroU64;
 use bon::bon;
 use sqlx::types::{chrono, uuid};
 
-use crate::{error::DatabaseResult, DatabaseError};
+use crate::{DatabaseError, error::DatabaseResult};
 
 /// Represents a user uploaded file in the database. See [`Upload::builder`] for creating a new instance,
 /// and [`Upload::insert`] for inserting it into the database.
