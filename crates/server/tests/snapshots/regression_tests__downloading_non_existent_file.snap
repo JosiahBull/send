@@ -2,4 +2,4 @@
 source: crates/server/tests/regression_tests.rs
 expression: body
 ---
-Invalid URL: Invalid upload id: Invalid characters
+Invalid URL: Invalid check bit

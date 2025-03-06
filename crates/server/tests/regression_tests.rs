@@ -14,8 +14,8 @@ use base64::Engine;
 use httpmock::{Mock, MockExt, MockServer};
 use rstest::{fixture, rstest};
 use ssh_key::{
-    private::{Ed25519Keypair, KeypairData},
     PrivateKey, PublicKey,
+    private::{Ed25519Keypair, KeypairData},
 };
 
 const COMMAND_NAME: &str = "server";
@@ -153,10 +153,10 @@ async fn started_server(
         .env("RUST_LOG", "DEBUG")
         // OTEL directives
         .env("OTEL_SERVICE_NAME", "backend")
-        .env(
-            "OTEL_EXPORTER_OTLP_ENDPOINT",
-            "http://telemetry.orb.local:4317",
-        )
+        // .env(
+        //     "OTEL_EXPORTER_OTLP_ENDPOINT",
+        //     "http://telemetry.orb.local:4317",
+        // )
         .env("TRACE_SAMPLE_PROBABILITY", "1.0")
         // Server directives
         .env("SERVER__HOST", "127.0.0.1")

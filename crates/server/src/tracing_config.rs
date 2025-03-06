@@ -5,8 +5,8 @@ use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::{LogExporter, SpanExporter};
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Layer;
+use tracing_subscriber::layer::SubscriberExt;
 
 use crate::error::ServerResult;
 

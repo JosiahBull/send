@@ -1,10 +1,11 @@
 [workspace]
 resolver = "2"
-members = [ "crates/database", "crates/server" ]
+members = [ "crates/database", "crates/server" , "./crates/human-friendly-ids" , "crates/human-friendly-ids"]
 
 [workspace.dependencies]
 database = { path = "crates/database" }
 server = { path = "crates/server" }
+human-friendly-ids = { path = "crates/human-friendly-ids" }
 async-stream = "0.3.6"
 axum = "0.8.2"
 axum-extra = "0.11.0"
