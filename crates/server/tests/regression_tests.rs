@@ -4,6 +4,7 @@
     clippy::impl_trait_in_params,
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects,
+    clippy::double_ended_iterator_last,
     reason = "This is an integration test."
 )]
 
