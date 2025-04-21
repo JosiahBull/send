@@ -23,6 +23,7 @@ pub struct UploadId(pub(crate) String);
 
 impl UploadId {
     /// Get string slice representation
+    #[allow(clippy::missing_const_for_fn, reason = "false positive")]
     pub fn as_str(&self) -> &str {
         &self.0
     }
