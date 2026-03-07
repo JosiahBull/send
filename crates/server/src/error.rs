@@ -69,7 +69,9 @@ pub enum ServerError {
     #[error(transparent)]
     TokioJoinError(#[from] tokio::task::JoinError),
     #[error(transparent)]
-    OpenTelemetryLoggingError(#[from] opentelemetry_sdk::logs::LogError),
+    OpenTelemetryLoggingError(#[from] opentelemetry_sdk::error::OTelSdkError),
+    #[error(transparent)]
+    ExporterBuildError(#[from] opentelemetry_otlp::ExporterBuildError),
 }
 
 impl ServerError {
@@ -101,6 +103,7 @@ impl ServerError {
             Self::TokioTimeoutError(_) => "TokioTimeoutError",
             Self::TokioJoinError(_) => "TokioJoinError",
             Self::OpenTelemetryLoggingError(_) => "OpenTelemetryLoggingError",
+            Self::ExporterBuildError(_) => "ExporterBuildError",
         }
     }
 
@@ -131,6 +134,7 @@ impl ServerError {
             Self::TokioTimeoutError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::TokioJoinError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::OpenTelemetryLoggingError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ExporterBuildError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

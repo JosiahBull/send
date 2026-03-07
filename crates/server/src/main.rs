@@ -333,7 +333,7 @@ pub fn router(
         // as long as not filtered out!
         .layer(OtelAxumLayer::default())
         .layer(
-            tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
+            tower_otel_http_metrics::HTTPMetricsLayerBuilder::builder()
                 .with_meter(opentelemetry::global::meter(env!("CARGO_CRATE_NAME")))
                 .build()
                 .expect("Failed to build otel metrics layer"),
