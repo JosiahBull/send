@@ -129,6 +129,7 @@ struct KeyDataInner {
     username: String,
 }
 
+/// A source of SSH public keys to fetch for authentication.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeySource {
     /// The URL to fetch the keys from.
@@ -150,6 +151,7 @@ struct GithubKeysInner {
     active_nonces: HashMap<[u8; NONCE_LENGTH], tokio::time::Instant>,
 }
 
+/// Manages GitHub SSH keys and nonce-based authentication for uploads.
 pub struct GithubKeys {
     /// The inner data used by the Authenticator. This is a shared object to enable access by
     /// multiple requests and the spawned tokio tasks which manage the data at the same time.

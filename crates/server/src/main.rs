@@ -48,6 +48,7 @@ pub struct AppState {
 }
 
 // Handlers
+/// Generate a new nonce for authenticating an upload request.
 #[tracing::instrument(skip(state))]
 #[axum::debug_handler]
 async fn get_nonce(State(state): State<AppState>) -> axum::Json<String> {
