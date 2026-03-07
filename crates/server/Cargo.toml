@@ -22,7 +22,7 @@ reqwest = { workspace = true, features = [
     "charset",
     "http2",
     "json",
-    "rustls-tls",
+    "rustls",
 
     # XXX: Only needed for testing!
     "multipart",
@@ -74,13 +74,14 @@ opentelemetry_sdk = { workspace = true, features = [
     "trace",
     "rt-tokio",
 ] }
-tracing-opentelemetry = { workspace = true, features = ["async-trait"] }
+tracing-opentelemetry = { workspace = true }
 reqwest-middleware = { workspace = true, features = ["json"] }
 axum-tracing-opentelemetry = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
 tower-otel-http-metrics = { workspace = true, features = ["axum"] }
+opentelemetry_0_30 = { workspace = true }
 bon = { workspace = true }
-reqwest-tracing = { workspace = true, features = ["opentelemetry_0_27"] }
+reqwest-tracing = { workspace = true, features = ["opentelemetry_0_31"] }
 tower_governor = { workspace = true, features = ["tracing"] }
 
 

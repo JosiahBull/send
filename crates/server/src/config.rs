@@ -98,7 +98,7 @@ impl ServerConfig {
                     "SERVER__HOST",
                     env.get("SERVER__HOST")
                         .expect("already checked to be present")
-                        .to_string(),
+                        .clone(),
                     e.to_string(),
                 )
             })?;
@@ -113,7 +113,7 @@ impl ServerConfig {
                     "SERVER__PORT",
                     env.get("SERVER__PORT")
                         .expect("already checked to be present")
-                        .to_string(),
+                        .clone(),
                     e.to_string(),
                 )
             })?;
@@ -128,7 +128,7 @@ impl ServerConfig {
                     "SERVER__DOMAIN",
                     env.get("SERVER__DOMAIN")
                         .expect("already checked to be present")
-                        .to_string(),
+                        .clone(),
                     e.to_string(),
                 )
             })?;
@@ -138,7 +138,7 @@ impl ServerConfig {
                 "SERVER__DOMAIN",
                 env.get("SERVER__DOMAIN")
                     .expect("already checked to be present")
-                    .to_string(),
+                    .clone(),
                 "Invalid URL scheme".to_string(),
             ));
         }
@@ -147,7 +147,7 @@ impl ServerConfig {
                 "SERVER__DOMAIN",
                 env.get("SERVER__DOMAIN")
                     .expect("already checked to be present")
-                    .to_string(),
+                    .clone(),
                 "Invalid URL".to_string(),
             ));
         }
@@ -187,7 +187,7 @@ impl DatabaseConfig {
             .get("DATABASE__URL")
             .and_then(|s| if s.is_empty() { None } else { Some(s) })
             .ok_or_else(|| ServerError::MissingEnvVar("DATABASE__URL"))?
-            .to_string();
+            .clone();
 
         Ok(Self { url })
     }
@@ -263,7 +263,7 @@ impl UploadConfig {
                     "UPLOAD__CACHE_DIRECTORY",
                     env.get("UPLOAD__CACHE_DIRECTORY")
                         .expect("already checked to be present")
-                        .to_string(),
+                        .clone(),
                     e.to_string(),
                 )
             })?;
@@ -391,7 +391,7 @@ impl AuthConfig {
                     "AUTH__MAX_NUMBER_OF_KEYS_PER_USER",
                     env.get("AUTH__MAX_NUMBER_OF_KEYS_PER_USER")
                         .expect("already checked to be present")
-                        .to_string(),
+                        .clone(),
                     e.to_string(),
                 )
             })?;
@@ -423,12 +423,12 @@ impl AuthConfig {
 
             let url = match env.get(&url_key) {
                 Some(url) => Url::parse(url).map_err(|e| {
-                    ServerError::InvalidEnvVar("AUTH__AUTH_KEYS__*", url.to_string(), e.to_string())
+                    ServerError::InvalidEnvVar("AUTH__AUTH_KEYS__*", url.clone(), e.to_string())
                 })?,
                 None => break,
             };
 
-            auth_keys.insert(url, username.to_string());
+            auth_keys.insert(url, username.clone());
             index = index.saturating_add(1);
         }
 
@@ -512,7 +512,7 @@ impl RateLimitConfig {
                     "RATE_LIMIT__BUCKET_SIZE",
                     env.get("RATE_LIMIT__BUCKET_SIZE")
                         .expect("already checked to be present")
-                        .to_string(),
+                        .clone(),
                     e.to_string(),
                 )
             })?
@@ -522,7 +522,7 @@ impl RateLimitConfig {
                     "RATE_LIMIT__BUCKET_SIZE",
                     env.get("RATE_LIMIT__BUCKET_SIZE")
                         .expect("already checked to be present")
-                        .to_string(),
+                        .clone(),
                     "Size must be non-zero".to_string(),
                 )
             })?;

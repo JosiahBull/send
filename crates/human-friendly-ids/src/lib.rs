@@ -4,9 +4,9 @@
 //!
 //! ```
 //! use human_friendly_ids::{UploadId, UploadIdDist};
-//! use rand::{Rng, distr::Distribution, thread_rng};
+//! use rand::{Rng, distr::Distribution};
 //!
-//! let mut rng = thread_rng();
+//! let mut rng = rand::rng();
 //! let dist = UploadIdDist::<12>;
 //! let id = dist.sample(&mut rng);
 //! println!("Generated ID: {}", id);
@@ -26,7 +26,7 @@ pub use crate::id::UploadId;
 mod tests {
     use std::convert::TryFrom;
 
-    use rand::{Rng, distr::Distribution};
+    use rand::{RngExt, distr::Distribution};
 
     use super::*;
     use crate::alphabet::GEN_ALPHABET;

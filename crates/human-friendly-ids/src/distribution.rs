@@ -1,7 +1,7 @@
 // src/distribution.rs
 //! Random generation of user-friendly IDs
 
-use rand::{Rng, distr::Distribution};
+use rand::{Rng, RngExt, distr::Distribution};
 
 use crate::{UploadId, alphabet};
 
@@ -13,7 +13,7 @@ use crate::{UploadId, alphabet};
 /// use rand::{Rng, distr::Distribution};
 ///
 /// let dist = UploadIdDist::<8>;
-/// let id = dist.sample(&mut rand::thread_rng());
+/// let id = dist.sample(&mut rand::rng());
 /// ```
 #[derive(Debug, Clone)]
 pub struct UploadIdDist<const N: usize>;

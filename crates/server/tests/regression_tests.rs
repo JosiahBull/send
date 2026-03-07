@@ -10,7 +10,7 @@
 
 use std::io::Read;
 
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use base64::Engine;
 use httpmock::{Mock, MockExt, MockServer};
 use rstest::{fixture, rstest};
@@ -18,8 +18,6 @@ use ssh_key::{
     PrivateKey, PublicKey,
     private::{Ed25519Keypair, KeypairData},
 };
-
-const COMMAND_NAME: &str = "server";
 
 struct ServerInstance {
     process: Option<std::process::Child>,
@@ -148,7 +146,7 @@ async fn started_server(
     u16,
     ServerInstance,
 ) {
-    let mut cmd = std::process::Command::cargo_bin(COMMAND_NAME).unwrap();
+    let mut cmd = std::process::Command::new(cargo_bin!("server"));
     cmd.env_clear()
         // Rust directives
         .env("RUST_LOG", "DEBUG")
@@ -241,10 +239,9 @@ async fn started_server(
     loop {
         if let Ok(response) =
             reqwest::get(&format!("http://127.0.0.1:{}/api/health", free_port)).await
+            && response.status().is_success()
         {
-            if response.status().is_success() {
-                break;
-            }
+            break;
         }
 
         if start.elapsed() > MAX_TIMEOUT {
@@ -282,7 +279,7 @@ async fn server_with_keys_initalised(
     const MAX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
     let start = std::time::Instant::now();
     loop {
-        if mock.hits() > 0 {
+        if mock.calls() > 0 {
             break;
         }
 
@@ -326,12 +323,11 @@ fn sanitise_snapshot(snapshot: String) -> String {
 
     // We include some timestamps for uploadedAt and expiresAt, which must be replaced.
     // find: <span class="uploadedAt|expiresAt">([0-9]*?)< and replace it with 1_000_000_000
-    let snapshot = regex::Regex::new(r#"<span class="(uploadedAt|expiresAt)">([0-9]*?)<"#)
+
+    regex::Regex::new(r#"<span class="(uploadedAt|expiresAt)">([0-9]*?)<"#)
         .unwrap()
         .replace_all(&snapshot, r#"<span class="$1">1_000_000_000<"#)
-        .to_string();
-
-    snapshot
+        .to_string()
 }
 
 /// Do a full test of the happy path to do a full upload and download.

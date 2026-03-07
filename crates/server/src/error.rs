@@ -69,8 +69,6 @@ pub enum ServerError {
     #[error(transparent)]
     TokioJoinError(#[from] tokio::task::JoinError),
     #[error(transparent)]
-    OpenTelemetryLoggingError(#[from] opentelemetry_sdk::error::OTelSdkError),
-    #[error(transparent)]
     ExporterBuildError(#[from] opentelemetry_otlp::ExporterBuildError),
 }
 
@@ -102,7 +100,6 @@ impl ServerError {
             Self::ReqwestMiddlewareError(_) => "ReqwestMiddlewareError",
             Self::TokioTimeoutError(_) => "TokioTimeoutError",
             Self::TokioJoinError(_) => "TokioJoinError",
-            Self::OpenTelemetryLoggingError(_) => "OpenTelemetryLoggingError",
             Self::ExporterBuildError(_) => "ExporterBuildError",
         }
     }
@@ -133,7 +130,6 @@ impl ServerError {
             Self::ReqwestMiddlewareError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::TokioTimeoutError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::TokioJoinError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Self::OpenTelemetryLoggingError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::ExporterBuildError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -189,10 +185,7 @@ mod tests {
             // ServerError::ChonoOutOfRange(chrono::OutOfRangeError),
             // ServerError::MutlipartError(MultipartError::Boundary),
             ServerError::SqlxError(sqlx::Error::RowNotFound),
-            ServerError::TokioIoError(tokio::io::Error::new(
-                tokio::io::ErrorKind::Other,
-                "io error",
-            )),
+            ServerError::TokioIoError(tokio::io::Error::other("io error")),
             // ServerError::DatabaseError(database::DatabaseError::ConnectionError("db error".to_string())),
             // ServerError::ReqwestError(reqwest::Error::new(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "reqwest error")),
         ];

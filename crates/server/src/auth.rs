@@ -11,7 +11,7 @@ use std::{
 use axum_extra::headers::authorization::Credentials;
 use base64::Engine;
 use bon::bon;
-use rand::RngCore;
+use rand::Rng;
 use reqwest::Url;
 use ssh_key::{PublicKey, SshSig, public::KeyData};
 use tokio::sync::RwLock;
@@ -181,6 +181,7 @@ pub struct GithubKeys {
 
 #[bon]
 impl GithubKeys {
+    /// Create a new [`GithubKeys`] instance that manages SSH key verification.
     #[tracing::instrument(skip(sources_to_check), fields(
         sources_to_check = ?sources_to_check.iter().take(15).map(|source| source.url.as_str()).collect::<Vec<_>>(),
     ), level = "debug")]
@@ -350,6 +351,7 @@ impl GithubKeys {
         }
     }
 
+    /// Gracefully shutdown background tasks and release resources.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub async fn gracefully_shutdown(self) -> ServerResult<()> {
         let Self {
@@ -385,6 +387,7 @@ impl GithubKeys {
         Ok(())
     }
 
+    /// Generate a new random nonce and store it as active.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub async fn generate_nonce(&self) -> String {
         let data = {
@@ -404,6 +407,7 @@ impl GithubKeys {
         base64::engine::general_purpose::STANDARD.encode(data)
     }
 
+    /// Verify a signed nonce and return the associated username if valid.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub async fn get_user(&self, nonce: &[u8; NONCE_LENGTH], signature: &SshSig) -> Option<String> {
         // Check if the nonce is active
@@ -519,13 +523,13 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         // Get the number of requests
-        mock.assert_hits(1);
+        mock.assert_calls(1);
 
         // Wait another second
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         // Get the number of requests
-        mock.assert_hits(1);
+        mock.assert_calls(1);
 
         // Ensure that the log messages do not exist yet
         assert!(!logs_contain("Key refresh task cancelled"));
@@ -612,7 +616,7 @@ mod tests {
             .build();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
-        mock.assert_hits(1);
+        mock.assert_calls(1);
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         // Get a nonce

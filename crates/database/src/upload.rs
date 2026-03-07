@@ -77,6 +77,10 @@ pub struct Upload {
 }
 
 #[bon]
+#[allow(
+    clippy::missing_errors_doc,
+    reason = "bon generated builder methods return Result"
+)]
 impl Upload {
     /// Creates a new `Upload` instance to be inserted into the database.
     ///

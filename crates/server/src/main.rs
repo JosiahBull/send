@@ -55,6 +55,7 @@ async fn get_nonce(State(state): State<AppState>) -> axum::Json<String> {
     axum::Json(nonce)
 }
 
+/// Handle a file upload request authenticated via SSH signature.
 #[tracing::instrument(skip(state))]
 #[axum::debug_handler]
 async fn upload(
@@ -246,9 +247,7 @@ pub fn router(
         // Download Routes
         .route("/{upload_id}", get(download_html))
         .route("/{upload_id}/file", get(download_stream))
-        .layer(GovernorLayer {
-            config: rate_limiter,
-        })
+        .layer(GovernorLayer::new(rate_limiter))
         .layer(axum::middleware::from_fn(
             |socket_addr: axum::extract::ConnectInfo<SocketAddr>,
              mut req: axum::extract::Request,
@@ -334,7 +333,7 @@ pub fn router(
         .layer(OtelAxumLayer::default())
         .layer(
             tower_otel_http_metrics::HTTPMetricsLayerBuilder::builder()
-                .with_meter(opentelemetry::global::meter(env!("CARGO_CRATE_NAME")))
+                .with_meter(opentelemetry_0_30::global::meter(env!("CARGO_CRATE_NAME")))
                 .build()
                 .expect("Failed to build otel metrics layer"),
         )
