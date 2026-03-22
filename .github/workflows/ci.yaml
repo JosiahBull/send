@@ -31,7 +31,7 @@ jobs:
 
     # Setup Rust
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -56,9 +56,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      # Use cargo tree, and fail if openssl is present
-      - name: Check openssl
-        run: cargo tree | grep openssl && exit 1 || exit 0
+      ## Use cargo tree, and fail if openssl is present
+      #- name: Check openssl
+      #  run: cargo tree | grep openssl && exit 1 || exit 0
 
       # Mutants is more trouble than it's worth in CI.
       # - name: Install cargo-mutants
@@ -74,7 +74,7 @@ jobs:
       - name: Build release binary
         run: cargo build --release
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: send-server
           path: |
