@@ -55,7 +55,7 @@ libc = "0.2.169"
 reqwest-tracing = "0.7.0"
 rstest = "0.26.1"
 tower_governor = "0.8.0"
-opentelemetry_0_30 = { package = "opentelemetry", version = "0.30.0" }
+opentelemetry_0_30 = { package = "opentelemetry", version = "0.31.0" }
 
 # Insta recommends compiling with optimizations It takes longer on initial compile, but makes test
 # runs faster. https://insta.rs/docs/quickstart/
