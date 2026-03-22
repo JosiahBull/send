@@ -78,8 +78,6 @@ tracing-opentelemetry = { workspace = true }
 reqwest-middleware = { workspace = true, features = ["json"] }
 axum-tracing-opentelemetry = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
-tower-otel-http-metrics = { workspace = true, features = ["axum"] }
-opentelemetry_0_30 = { workspace = true }
 bon = { workspace = true }
 reqwest-tracing = { workspace = true, features = ["opentelemetry_0_31"] }
 tower_governor = { workspace = true, features = ["tracing"] }
