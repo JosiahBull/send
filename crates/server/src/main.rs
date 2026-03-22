@@ -5,6 +5,8 @@ mod build_info;
 mod config;
 mod error;
 mod extractors;
+/// Tower middleware for recording HTTP server metrics via OpenTelemetry.
+mod http_metrics;
 mod template;
 mod tracing_config;
 mod uploads;
@@ -332,12 +334,9 @@ pub fn router(
         // start OpenTelemetry trace on incoming request
         // as long as not filtered out!
         .layer(OtelAxumLayer::default())
-        .layer(
-            tower_otel_http_metrics::HTTPMetricsLayerBuilder::builder()
-                .with_meter(opentelemetry_0_30::global::meter(env!("CARGO_CRATE_NAME")))
-                .build()
-                .expect("Failed to build otel metrics layer"),
-        )
+        .layer(http_metrics::HttpMetricsLayer::new(
+            &opentelemetry::global::meter(env!("CARGO_CRATE_NAME")),
+        ))
         .layer(
             CompressionLayer::new()
                 .br(true)
